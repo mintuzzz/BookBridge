@@ -1,0 +1,286 @@
+{
+  "users": [
+    {
+      "id": "user_admin",
+      "_id": "user_admin",
+      "email": "admin@bookbridge.edu",
+      "phone": "+1 (555) 019-2831",
+      "passwordHash": "$2a$10$6vi9RWduWfriDTOq76GICOHBZMW9hKzm2DQ6zNxupCXzR.yM2b/sq",
+      "role": "ADMIN",
+      "status": "active",
+      "isEmailVerified": true
+    },
+    {
+      "id": "user_alex",
+      "_id": "user_alex",
+      "email": "alex.smith@student.edu",
+      "phone": "+1 (555) 234-5678",
+      "passwordHash": "$2a$10$/Q/JJOdTwthYdQ6RFiBDkeU5kSrWOaK2W3/AOSSJT9wz5JligEz/e",
+      "role": "STUDENT",
+      "status": "active",
+      "isEmailVerified": true
+    },
+    {
+      "id": "user_priya",
+      "_id": "user_priya",
+      "email": "priya.sharma@student.edu",
+      "phone": "+1 (555) 345-6789",
+      "passwordHash": "$2a$10$/Q/JJOdTwthYdQ6RFiBDkeU5kSrWOaK2W3/AOSSJT9wz5JligEz/e",
+      "role": "STUDENT",
+      "status": "active",
+      "isEmailVerified": true
+    },
+    {
+      "id": "user_marcus",
+      "_id": "user_marcus",
+      "email": "marcus.vance@student.edu",
+      "phone": "+1 (555) 456-7890",
+      "passwordHash": "$2a$10$/Q/JJOdTwthYdQ6RFiBDkeU5kSrWOaK2W3/AOSSJT9wz5JligEz/e",
+      "role": "STUDENT",
+      "status": "active",
+      "isEmailVerified": true
+    }
+  ],
+  "userprofiles": [
+    {
+      "id": "prof_admin",
+      "_id": "prof_admin",
+      "user": "user_admin",
+      "fullName": "Platform Administrator",
+      "institution": "State University of Technology",
+      "department": "Administration",
+      "semester": 8,
+      "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "ecoPoints": 500,
+      "rating": 5
+    },
+    {
+      "id": "prof_alex",
+      "_id": "prof_alex",
+      "user": "user_alex",
+      "fullName": "Alex Smith",
+      "institution": "State University of Technology",
+      "department": "Computer Science",
+      "semester": 5,
+      "avatarUrl": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80",
+      "ecoPoints": 185,
+      "rating": 4.9
+    },
+    {
+      "id": "prof_priya",
+      "_id": "prof_priya",
+      "user": "user_priya",
+      "fullName": "Priya Sharma",
+      "institution": "State University of Technology",
+      "department": "Engineering",
+      "semester": 4,
+      "avatarUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+      "ecoPoints": 220,
+      "rating": 4.8
+    },
+    {
+      "id": "prof_marcus",
+      "_id": "prof_marcus",
+      "user": "user_marcus",
+      "fullName": "Marcus Vance",
+      "institution": "State University of Technology",
+      "department": "Medicine",
+      "semester": 6,
+      "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "ecoPoints": 140,
+      "rating": 4.7
+    }
+  ],
+  "books": [
+    {
+      "id": "book_algo",
+      "_id": "book_algo",
+      "seller": "user_alex",
+      "title": "Introduction to Algorithms (4th Edition)",
+      "author": "Thomas H. Cormen, Charles E. Leiserson",
+      "edition": "4th Edition",
+      "isbn": "978-0262046305",
+      "subject": "Algorithms & Data Structures",
+      "department": "Computer Science",
+      "semester": 3,
+      "condition": "Very Good",
+      "originalPrice": 1200,
+      "sellingPrice": 450,
+      "transactionType": "buy",
+      "location": "Central Library Grounds",
+      "description": "Comprehensive guide to modern algorithms.",
+      "images": [
+        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80"
+      ],
+      "viewCount": 84,
+      "status": "available",
+      "createdAt": "2026-08-26T06:25:41.541Z"
+    },
+    {
+      "id": "book_os",
+      "_id": "book_os",
+      "seller": "user_alex",
+      "title": "Operating System Concepts",
+      "author": "Abraham Silberschatz, Peter B. Galvin",
+      "edition": "10th Edition",
+      "isbn": "978-1118063330",
+      "subject": "Operating Systems",
+      "department": "Computer Science",
+      "semester": 4,
+      "condition": "Like New",
+      "originalPrice": 890,
+      "sellingPrice": 350,
+      "transactionType": "exchange",
+      "wantedBookTitle": "Computer Networking: A Top-Down Approach",
+      "location": "CS Department Block B",
+      "description": "The Dinosaur book!",
+      "images": [
+        "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=600&auto=format&fit=crop&q=80"
+      ],
+      "viewCount": 112,
+      "status": "available",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    },
+    {
+      "id": "book_net",
+      "_id": "book_net",
+      "seller": "user_priya",
+      "title": "Computer Networking: A Top-Down Approach",
+      "author": "James F. Kurose, Keith W. Ross",
+      "edition": "8th Edition",
+      "isbn": "978-0136681557",
+      "subject": "Computer Networks",
+      "department": "Computer Science",
+      "semester": 4,
+      "condition": "Very Good",
+      "originalPrice": 950,
+      "sellingPrice": 380,
+      "transactionType": "exchange",
+      "wantedBookTitle": "Operating System Concepts",
+      "location": "Engineering Quad Plaza",
+      "description": "Great textbook for networking protocols.",
+      "images": [
+        "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=600&auto=format&fit=crop&q=80"
+      ],
+      "viewCount": 95,
+      "status": "available",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    },
+    {
+      "id": "book_gray",
+      "_id": "book_gray",
+      "seller": "user_marcus",
+      "title": "Gray's Anatomy for Students",
+      "author": "Richard Drake, A. Wayne Vogl",
+      "edition": "4th Edition",
+      "isbn": "978-0323393041",
+      "subject": "Human Anatomy",
+      "department": "Medicine",
+      "semester": 2,
+      "condition": "Very Good",
+      "originalPrice": 1500,
+      "sellingPrice": 600,
+      "transactionType": "buy",
+      "location": "Medical College Canteen",
+      "description": "Essential reference with full-color anatomical illustrations.",
+      "images": [
+        "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&auto=format&fit=crop&q=80"
+      ],
+      "viewCount": 145,
+      "status": "available",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    },
+    {
+      "id": "book_biochem",
+      "_id": "book_biochem",
+      "seller": "user_marcus",
+      "title": "Basic Medical Biochemistry",
+      "author": "Michael Lieberman, Alisa Peet",
+      "edition": "5th Edition",
+      "isbn": "978-1496324818",
+      "subject": "Biochemistry",
+      "department": "Medicine",
+      "semester": 1,
+      "condition": "Good",
+      "originalPrice": 820,
+      "sellingPrice": 0,
+      "transactionType": "donate",
+      "location": "Student Activity Center",
+      "description": "Free donation for junior medical students in need!",
+      "images": [
+        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80"
+      ],
+      "viewCount": 210,
+      "status": "available",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord_1",
+      "_id": "ord_1",
+      "orderNumber": "ORD-2026-8812",
+      "buyer": "user_priya",
+      "seller": "user_alex",
+      "book": "book_algo",
+      "transactionType": "buy",
+      "status": "ready_for_pickup",
+      "paymentMethod": "upi",
+      "paymentStatus": "unpaid",
+      "totalAmount": 450,
+      "pickupOtp": "492815",
+      "qrCodeData": "BB-VERIFY-492815-ORD8812",
+      "pickupNotes": "Meet near Central Library main stairs at 4:00 PM",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    }
+  ],
+  "exchanges": [
+    {
+      "id": "ex_1",
+      "_id": "ex_1",
+      "requester": "user_alex",
+      "owner": "user_priya",
+      "offeredBook": "book_os",
+      "requestedBook": "book_net",
+      "matchLevel": "perfect",
+      "matchReason": "100% Perfect Mutual Exchange Match.",
+      "status": "pending",
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    }
+  ],
+  "exchangematches": [],
+  "donations": [],
+  "bookrequests": [],
+  "wishlists": [],
+  "conversations": [],
+  "messages": [],
+  "reviews": [],
+  "reports": [],
+  "notifications": [
+    {
+      "id": "notif_1",
+      "_id": "notif_1",
+      "user": "user_alex",
+      "title": "🔄 Perfect Exchange Match Found!",
+      "message": "Priya Sharma has \"Computer Networking\" which matches your wanted book request.",
+      "type": "exchange",
+      "link": "/exchanges",
+      "isRead": false,
+      "createdAt": "2026-08-26T06:25:41.542Z"
+    }
+  ],
+  "pickupverifications": [
+    {
+      "id": "pv_1",
+      "_id": "pv_1",
+      "order": "ord_1",
+      "otpCode": "492815",
+      "qrCodeData": "BB-VERIFY-492815-ORD8812",
+      "isVerified": false
+    }
+  ],
+  "ecopoints": [],
+  "adminactions": [],
+  "sessions": [],
+  "otpverifications": []
+}

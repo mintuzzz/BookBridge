@@ -1,0 +1,34 @@
+{
+  "users": [],
+  "books": [],
+  "orders": [],
+  "exchanges": [],
+  "donations": [],
+  "book_requests": [],
+  "wishlists": [
+    {
+      "id": 1,
+      "user_id": null,
+      "book_id": null,
+      "created_at": "2026-08-26T06:09:58.835Z"
+    },
+    {
+      "id": 2,
+      "user_id": null,
+      "book_id": null,
+      "created_at": "2026-08-26T06:09:58.839Z"
+    },
+    {
+      "id": 3,
+      "user_id": null,
+      "book_id": null,
+      "created_at": "2026-08-26T06:09:58.841Z"
+    }
+  ],
+  "conversations": [],
+  "messages": [],
+  "reviews": [],
+  "reports": [],
+  "notifications": [],
+  "eco_points_log": []
+}
