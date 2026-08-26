@@ -4,9 +4,25 @@ import jwt from 'jsonwebtoken';
 let io = null;
 
 export function initSocket(httpServer) {
+  const allowedOrigins = [
+    'https://book-bridge-blue.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5000',
+    'http://127.0.0.1:3000'
+  ];
+
+  if (process.env.FRONTEND_URL) {
+    const envUrl = process.env.FRONTEND_URL.trim().replace(/\/$/, '');
+    if (!allowedOrigins.includes(envUrl)) {
+      allowedOrigins.push(envUrl);
+    }
+  }
+
   io = new Server(httpServer, {
     cors: {
-      origin: '*',
+      origin: allowedOrigins,
+      credentials: true,
       methods: ['GET', 'POST']
     }
   });
