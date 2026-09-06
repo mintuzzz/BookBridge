@@ -27,7 +27,6 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
   const [canResend, setCanResend] = useState(false);
   const [loading, setLoading] = useState(false);
   const [otpPurpose, setOtpPurpose] = useState('REGISTER');
-  const [activeOtpCode, setActiveOtpCode] = useState('');
 
   // Cooldown Countdown Timer Effect
   useEffect(() => {
@@ -149,12 +148,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
       }
 
       setOtpPurpose('REGISTER');
-      if (data.otp) {
-        setActiveOtpCode(data.otp);
-        setOtpDigits(data.otp.toString().split(''));
-      } else {
-        setOtpDigits(['', '', '', '', '', '']);
-      }
+      setOtpDigits(['', '', '', '', '', '']);
       setResendCooldown(60);
       setCanResend(false);
       setMode('otp');
@@ -220,12 +214,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Resend Error');
 
-      if (data.otp) {
-        setActiveOtpCode(data.otp);
-        setOtpDigits(data.otp.toString().split(''));
-      } else {
-        setOtpDigits(['', '', '', '', '', '']);
-      }
+      setOtpDigits(['', '', '', '', '', '']);
       setResendCooldown(60);
       setCanResend(false);
       showToast('A new 6-digit code has been sent to your email.', 'success', 'Code Resent');
@@ -250,12 +239,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
       if (!res.ok) throw new Error(data.message || data.error || 'Request Failed');
 
       setOtpPurpose('PASSWORD_RESET');
-      if (data.otp) {
-        setActiveOtpCode(data.otp);
-        setOtpDigits(data.otp.toString().split(''));
-      } else {
-        setOtpDigits(['', '', '', '', '', '']);
-      }
+      setOtpDigits(['', '', '', '', '', '']);
       setResendCooldown(60);
       setCanResend(false);
       setMode('otp');
@@ -489,12 +473,6 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
             <div style={{ backgroundColor: 'var(--emerald-50)', border: '1px solid var(--emerald-200)', borderRadius: '12px', padding: '0.85rem', fontSize: '0.825rem', color: 'var(--emerald-800)' }}>
               ✉️ We sent a 6-digit code to <strong>{email}</strong>.<br />Please check your email inbox (and spam folder).
             </div>
-
-            {activeOtpCode && (
-              <div style={{ backgroundColor: '#f0fdf4', border: '1px dashed #16a34a', borderRadius: '10px', padding: '0.65rem 0.85rem', fontSize: '0.825rem', color: '#15803d', fontWeight: 600 }}>
-                🔑 Verification Code: <span style={{ fontFamily: 'monospace', fontSize: '1.1rem', letterSpacing: '2px', fontWeight: 800 }}>{activeOtpCode}</span>
-              </div>
-            )}
 
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '12px', color: 'var(--text-dark)' }}>
