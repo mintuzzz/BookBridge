@@ -83,7 +83,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     }
   };
 
-  const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 35000) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -93,7 +93,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     } catch (err) {
       clearTimeout(timer);
       if (err.name === 'AbortError') {
-        throw new Error('Server request timed out. The backend took too long to respond. Please try again.');
+        throw new Error('Server request timed out. The backend took too long to wake up or respond. Please try again.');
       }
       throw err;
     }
