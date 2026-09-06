@@ -12,20 +12,28 @@ const mongoStorePath = path.join(__dirname, 'mongodb_store.json');
 
 export let isMongoConnected = false;
 
+export const checkIsMongoConnected = () => {
+  return mongoose.connection && mongoose.connection.readyState === 1;
+};
+
 export const initDb = async () => {
-  if (isMongoConnected) return true;
+  if (checkIsMongoConnected()) {
+    isMongoConnected = true;
+    return true;
+  }
 
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/bookbridge';
 
   try {
     mongoose.set('strictQuery', false);
+    mongoose.set('bufferCommands', false);
     console.log(`🍃 Connecting to MongoDB at: ${uri}`);
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 2000, connectTimeoutMS: 2000 });
     isMongoConnected = true;
     console.log(`✅ Connected to MongoDB Database server cleanly.`);
     return true;
   } catch (err) {
-    console.log(`ℹ️ MongoDB local daemon on 27017 not detected (${err.message}). Using persistent MongoDB JSON Document Store.`);
+    console.log(`ℹ️ MongoDB connection unavailable (${err.message}). Using persistent MongoDB JSON Document Store.`);
     isMongoConnected = false;
     return false;
   }
