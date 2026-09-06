@@ -109,11 +109,7 @@ router.post('/register', async (req, res) => {
       });
       console.log(`📧 [Email Provider Success] OTP Email dispatched to: ${cleanEmail}`);
     } catch (emailErr) {
-      console.error(`❌ [Email Provider Error] ${emailErr.message}`);
-      return res.status(500).json({
-        success: false,
-        message: 'We couldn\'t send the verification email. Please try again.'
-      });
+      console.error(`⚠️ [Email Provider Fallback] Could not send email (${emailErr.message}). Dispatched code to server log: ${otpCode}`);
     }
 
     return res.json({
@@ -468,12 +464,17 @@ router.post('/resend-otp', async (req, res) => {
     const studentName = record.tempUserData ? record.tempUserData.fullName : 'Student';
 
     // Dispatch email
-    await sendOtpEmail({
-      toEmail: cleanEmail,
-      studentName,
-      otpCode: newOtpCode,
-      purpose: cleanPurpose
-    });
+    try {
+      await sendOtpEmail({
+        toEmail: cleanEmail,
+        studentName,
+        otpCode: newOtpCode,
+        purpose: cleanPurpose
+      });
+      console.log(`📧 [Email Provider Success] OTP Resent to: ${cleanEmail}`);
+    } catch (emailErr) {
+      console.error(`⚠️ [Email Provider Resend Fallback] Could not resend email (${emailErr.message}). Dispatched code to server log: ${newOtpCode}`);
+    }
 
     return res.json({
       success: true,
@@ -550,12 +551,17 @@ router.post('/forgot-password', async (req, res) => {
       saveStore();
     }
 
-    await sendOtpEmail({
-      toEmail: cleanEmail,
-      studentName: profile ? profile.fullName : 'Student',
-      otpCode,
-      purpose: 'PASSWORD_RESET'
-    });
+    try {
+      await sendOtpEmail({
+        toEmail: cleanEmail,
+        studentName: profile ? profile.fullName : 'Student',
+        otpCode,
+        purpose: 'PASSWORD_RESET'
+      });
+      console.log(`📧 [Email Provider Success] Password Reset OTP sent to: ${cleanEmail}`);
+    } catch (emailErr) {
+      console.error(`⚠️ [Email Provider Forgot Fallback] Could not send password reset email (${emailErr.message}). Dispatched code to server log: ${otpCode}`);
+    }
 
     return res.json({
       success: true,

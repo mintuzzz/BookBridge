@@ -83,12 +83,28 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     }
   };
 
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') {
+        throw new Error('Server request timed out. The backend took too long to respond. Please try again.');
+      }
+      throw err;
+    }
+  };
+
   // Submit Login (Student or Admin authenticated via /api/auth/login)
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetchWithTimeout('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.toLowerCase().trim(), password })
@@ -111,7 +127,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetchWithTimeout('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,7 +171,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/verify-otp', {
+      const res = await fetchWithTimeout('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -187,7 +203,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     if (!canResend) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/resend-otp', {
+      const res = await fetchWithTimeout('/api/auth/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -214,7 +230,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetchWithTimeout('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.toLowerCase().trim() })
