@@ -94,7 +94,10 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       auth: {
         user: SMTP_USER,
         pass: cleanPass
-      }
+      },
+      connectionTimeout: 4000, // 4 seconds max TCP connection timeout
+      greetingTimeout: 4000,   // 4 seconds max SMTP greeting timeout
+      socketTimeout: 5000       // 5 seconds max socket idle timeout
     });
 
     const info = await transporter.sendMail({

@@ -52,11 +52,15 @@ export const SocketProvider = ({ children }) => {
     if (isAuthenticated && authToken) {
       console.log(`🔌 [FRONTEND SOCKET ATTEMPTING CONNECT] Authenticated User ID: ${currentUserId || 'Active Student'}`);
 
-      // Explicitly specify socket URL to ensure connection over Vite proxy or backend URL
-      const socketUrl = window.location.origin;
+      // Explicitly specify socket URL: Use Render backend URL on Vercel, or window.location.origin on localhost
+      let socketUrl = window.location.origin;
+      if (window.location.hostname.includes('vercel.app')) {
+        socketUrl = 'https://bookbridge-api-394s.onrender.com';
+      }
+
       const socket = io(socketUrl, {
         auth: { token: authToken },
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'],
         reconnection: true,
         reconnectionAttempts: 15,
         reconnectionDelay: 1000

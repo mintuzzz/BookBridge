@@ -58,6 +58,9 @@ export default function BookCard({ book }) {
           <img
             src={mainImage}
             alt={book.title}
+            onError={(e) => {
+              e.target.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600';
+            }}
             style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
             className="book-card-img"
           />
