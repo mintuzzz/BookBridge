@@ -86,13 +86,14 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
 
   // 2. Dispatch via Production SMTP Server (Gmail / Brevo / SendGrid / Custom SMTP)
   if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+    const cleanPass = SMTP_PASS.replace(/\s+/g, '');
     const transporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port: SMTP_PORT,
       secure: SMTP_PORT === 465, // true for 465, false for other ports
       auth: {
         user: SMTP_USER,
-        pass: SMTP_PASS
+        pass: cleanPass
       }
     });
 
@@ -103,7 +104,7 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       html: htmlContent
     });
 
-    console.log(`✉️ [Production SMTP] Real OTP email sent to ${toEmail} (MessageId: ${info.messageId})`);
+    console.log(`✉️ [Production SMTP] Real OTP email (${otpCode}) sent to ${toEmail} (MessageId: ${info.messageId})`);
     return { success: true, provider: 'smtp', messageId: info.messageId };
   }
 
