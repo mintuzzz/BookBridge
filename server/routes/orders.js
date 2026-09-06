@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { isMongoConnected, getStore, saveStore } from '../db/database.js';
@@ -11,57 +12,95 @@ import OrderMessage from '../models/OrderMessage.js';
 import HandoverOtp from '../models/HandoverOtp.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { emitNotification, emitOrderUpdate, emitMessageUpdate } from '../socket.js';
+import { createNotification } from '../utils/notificationsHelper.js';
 
 const router = express.Router();
 
+async function findOrderById(orderId) {
+  if (!orderId) return null;
+  const idStr = orderId.toString();
+  let order = null;
+  if (mongoose.Types.ObjectId.isValid(idStr)) {
+    try {
+      order = await Order.findById(idStr).populate('book');
+    } catch (e) {}
+  }
+  if (!order) {
+    try {
+      order = await Order.findOne({ $or: [{ _id: idStr }, { id: idStr }] }).populate('book');
+    } catch (e) {}
+  }
+  return order;
+}
+
 // Helper: Automatically generate handover code on backend
 async function autoGenerateHandoverCode({ transactionId, transactionType, senderId, receiverId, meetingSpot, proposedDate }) {
-  await HandoverOtp.updateMany(
-    { transactionId: transactionId.toString(), purpose: 'HANDOVER_COMPLETION', verified: false },
-    { verified: true }
-  );
-
   const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = await bcrypt.hash(rawOtp, 10);
 
-  await HandoverOtp.create({
-    transactionId: transactionId.toString(),
-    transactionType,
-    purpose: 'HANDOVER_COMPLETION',
-    sender: senderId,
-    receiver: receiverId,
-    otpHash,
-    expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 min expiry
-    attempts: 0,
-    verified: false
-  });
+  if (isMongoConnected) {
+    await HandoverOtp.updateMany(
+      { transactionId: transactionId.toString(), purpose: 'HANDOVER_COMPLETION', verified: false },
+      { verified: true }
+    );
+
+    await HandoverOtp.create({
+      transactionId: transactionId.toString(),
+      transactionType,
+      purpose: 'HANDOVER_COMPLETION',
+      sender: senderId,
+      receiver: receiverId,
+      otpHash,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 min expiry
+      attempts: 0,
+      verified: false
+    });
+  } else {
+    const store = getStore();
+    if (!store.pickupverifications) store.pickupverifications = [];
+    store.pickupverifications.forEach((v) => {
+      if ((v.transaction_id || v.transactionId)?.toString() === transactionId.toString() && v.purpose === 'HANDOVER_COMPLETION') {
+        v.verified = true;
+      }
+    });
+    store.pickupverifications.push({
+      id: `otp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      transaction_id: transactionId.toString(),
+      transactionId: transactionId.toString(),
+      transaction_type: transactionType,
+      purpose: 'HANDOVER_COMPLETION',
+      sender_id: senderId,
+      sender: senderId,
+      receiver_id: receiverId,
+      receiver: receiverId,
+      otp_code: rawOtp,
+      otpHash,
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      attempts: 0,
+      verified: false,
+      created_at: new Date().toISOString()
+    });
+    saveStore();
+  }
 
   // SAFE SERVER LOG (NEVER LOG ACTUAL OTP)
   console.log(`[SECURITY LOG] Handover completion code automatically generated for ${transactionType} transaction: ${transactionId}`);
 
-  // Notify Seller/Sender with Code
-  if (isMongoConnected) {
-    try {
-      const sellerNotif = await Notification.create({
-        user: senderId,
-        title: `🔑 Handover Code: ${rawOtp}`,
-        message: `Share this 6-digit code with the buyer after handing over the book at ${meetingSpot || 'meeting'}.`,
-        type: 'order',
-        link: '/orders'
-      });
-      emitNotification(senderId, sellerNotif);
+  await createNotification({
+    user: senderId,
+    title: `🔑 Handover Code: ${rawOtp}`,
+    message: `Share this 6-digit code with the buyer after handing over the book at ${meetingSpot || 'meeting'}.`,
+    type: 'order',
+    link: `/orders?orderId=${transactionId}`
+  });
 
-      // Notify Buyer/Receiver WITHOUT Code
-      const buyerNotif = await Notification.create({
-        user: receiverId,
-        title: '🔑 Handover Scheduled',
-        message: `Handover scheduled on ${proposedDate || 'today'} at ${meetingSpot || 'pickup spot'}. Get the 6-digit handover code from seller at handover!`,
-        type: 'order',
-        link: '/orders'
-      });
-      emitNotification(receiverId, buyerNotif);
-    } catch (e) {}
-  }
+  await createNotification({
+    user: receiverId,
+    title: '🔑 Handover Scheduled',
+    message: `Handover scheduled on ${proposedDate || 'today'} at ${meetingSpot || 'pickup spot'}. Get the 6-digit handover code from seller at handover!`,
+    type: 'order',
+    link: `/orders?orderId=${transactionId}`
+  });
 
   return rawOtp;
 }
@@ -309,60 +348,93 @@ router.post('/:id/propose-schedule', authenticateToken, async (req, res) => {
   try {
     const orderId = req.params.id;
     const { meeting_spot, proposed_date, start_time, end_time } = req.body;
-    const currentUserId = req.user.id;
-
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
-
-    const buyerId = order.buyer.toString();
-    const sellerId = order.seller.toString();
-
-    if (currentUserId !== buyerId && currentUserId !== sellerId) {
-      return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can schedule handover.' });
-    }
-
-    if (order.status !== 'accepted' && order.status !== 'scheduled' && order.status !== 'handover_pending') {
-      return res.status(400).json({ error: `Cannot schedule handover for request with status "${order.status}".` });
-    }
+    const currentUserIdStr = req.user.id.toString();
 
     if (!meeting_spot || !proposed_date || !start_time || !end_time) {
       return res.status(400).json({ error: 'Please provide meeting spot, date, start time, and end time.' });
     }
 
-    order.meetingSpot = meeting_spot;
-    order.proposedDate = proposed_date;
-    order.proposedStartTime = start_time;
-    order.proposedEndTime = end_time;
-    order.proposedBy = currentUserId;
-    order.scheduleConfirmedBy = null;
+    let order = null;
+    let buyerIdStr = '';
+    let sellerIdStr = '';
 
-    await order.save();
-
-    const peerId = currentUserId === buyerId ? order.seller : order.buyer;
     if (isMongoConnected) {
-      try {
-        const notif = await Notification.create({
-          user: peerId,
-          title: '📅 Handover Schedule Proposed',
-          message: `${req.user.full_name || 'Student'} proposed meeting on ${proposed_date} (${start_time} - ${end_time}) at ${meeting_spot}.`,
-          type: 'order',
-          link: '/orders'
-        });
+      order = await Order.findById(orderId);
+      if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
 
-        // REAL-TIME PUSH
-        emitNotification(peerId, notif);
-        emitOrderUpdate(buyerId, sellerId, { type: 'schedule_proposed', orderId: order._id.toString() });
-      } catch (e) {}
+      buyerIdStr = (order.buyer?._id || order.buyer).toString();
+      sellerIdStr = (order.seller?._id || order.seller).toString();
+
+      if (currentUserIdStr !== buyerIdStr && currentUserIdStr !== sellerIdStr) {
+        return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can schedule handover.' });
+      }
+
+      if (!['accepted', 'scheduled', 'handover_pending'].includes(order.status)) {
+        return res.status(400).json({ error: `Cannot schedule handover for request with status "${order.status}".` });
+      }
+
+      order.meetingSpot = meeting_spot;
+      order.proposedDate = proposed_date;
+      order.proposedStartTime = start_time;
+      order.proposedEndTime = end_time;
+      order.proposedBy = currentUserIdStr;
+      order.scheduleConfirmedBy = null;
+
+      await order.save();
+    } else {
+      const store = getStore();
+      order = (store.orders || []).find((o) => (o.id || o._id).toString() === orderId);
+      if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
+
+      buyerIdStr = (order.buyer || order.buyer_id).toString();
+      sellerIdStr = (order.seller || order.seller_id).toString();
+
+      if (currentUserIdStr !== buyerIdStr && currentUserIdStr !== sellerIdStr) {
+        return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can schedule handover.' });
+      }
+
+      if (!['accepted', 'scheduled', 'handover_pending'].includes(order.status)) {
+        return res.status(400).json({ error: `Cannot schedule handover for request with status "${order.status}".` });
+      }
+
+      order.meetingSpot = meeting_spot;
+      order.meeting_spot = meeting_spot;
+      order.proposedDate = proposed_date;
+      order.proposed_date = proposed_date;
+      order.proposedStartTime = start_time;
+      order.start_time = start_time;
+      order.proposedEndTime = end_time;
+      order.end_time = end_time;
+      order.proposedBy = currentUserIdStr;
+      order.proposed_by = currentUserIdStr;
+      order.scheduleConfirmedBy = null;
+      order.confirmed_by = null;
+
+      saveStore();
     }
+
+    const peerIdStr = currentUserIdStr === buyerIdStr ? sellerIdStr : buyerIdStr;
+    const proposerName = req.user.full_name || 'Your transaction partner';
+
+    await createNotification({
+      user: peerIdStr,
+      type: 'order',
+      title: '📅 Meeting Schedule Proposed',
+      message: `${proposerName} proposed a meeting at ${meeting_spot} on ${proposed_date} from ${start_time} to ${end_time}.`,
+      link: `/orders?orderId=${orderId}`,
+      relatedBook: (order.book?._id || order.book || order.book_id || '').toString()
+    });
+
+    emitOrderUpdate(buyerIdStr, sellerIdStr, { type: 'schedule_proposed', orderId });
 
     return res.json({
       success: true,
-      message: 'Handover schedule proposed! Waiting for peer confirmation.',
+      message: 'Meeting schedule proposed successfully.',
       order
     });
   } catch (err) {
     console.error('Propose order schedule error:', err);
-    return res.status(500).json({ error: 'Failed to submit handover schedule.' });
+    return res.status(500).json({ error: 'Unable to propose the meeting schedule. Please try again.' });
   }
 });
 
@@ -370,50 +442,91 @@ router.post('/:id/propose-schedule', authenticateToken, async (req, res) => {
 router.post('/:id/confirm-schedule', authenticateToken, async (req, res) => {
   try {
     const orderId = req.params.id;
-    const currentUserId = req.user.id;
+    const currentUserIdStr = req.user.id.toString();
 
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
+    let order = null;
+    let buyerIdStr = '';
+    let sellerIdStr = '';
 
-    const buyerId = order.buyer.toString();
-    const sellerId = order.seller.toString();
+    if (isMongoConnected) {
+      order = await Order.findById(orderId);
+      if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
 
-    if (currentUserId !== buyerId && currentUserId !== sellerId) {
-      return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can confirm handover schedule.' });
+      buyerIdStr = (order.buyer?._id || order.buyer).toString();
+      sellerIdStr = (order.seller?._id || order.seller).toString();
+
+      if (currentUserIdStr !== buyerIdStr && currentUserIdStr !== sellerIdStr) {
+        return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can confirm handover schedule.' });
+      }
+
+      if (order.proposedBy && order.proposedBy.toString() === currentUserIdStr) {
+        return res.status(400).json({ error: 'You cannot confirm a schedule you proposed yourself. Peer student must agree.' });
+      }
+
+      if (!['accepted', 'scheduled', 'handover_pending'].includes(order.status)) {
+        return res.status(400).json({ error: `Cannot confirm schedule for request with status "${order.status}".` });
+      }
+
+      order.status = 'handover_pending';
+      order.scheduleConfirmedBy = currentUserIdStr;
+      order.scheduledAt = new Date();
+
+      await order.save();
+    } else {
+      const store = getStore();
+      order = (store.orders || []).find((o) => (o.id || o._id).toString() === orderId);
+      if (!order) return res.status(404).json({ error: 'Purchase request not found.' });
+
+      buyerIdStr = (order.buyer || order.buyer_id).toString();
+      sellerIdStr = (order.seller || order.seller_id).toString();
+
+      if (currentUserIdStr !== buyerIdStr && currentUserIdStr !== sellerIdStr) {
+        return res.status(403).json({ error: 'Unauthorized. Only buyer or seller can confirm handover schedule.' });
+      }
+
+      const proposedByStr = (order.proposedBy || order.proposed_by || '').toString();
+      if (proposedByStr === currentUserIdStr) {
+        return res.status(400).json({ error: 'You cannot confirm a schedule you proposed yourself. Peer student must agree.' });
+      }
+
+      order.status = 'handover_pending';
+      order.scheduleConfirmedBy = currentUserIdStr;
+      order.confirmed_by = currentUserIdStr;
+      order.scheduledAt = new Date().toISOString();
+      order.scheduled_at = new Date().toISOString();
+
+      saveStore();
     }
 
-    if (order.proposedBy && order.proposedBy.toString() === currentUserId) {
-      return res.status(400).json({ error: 'You cannot confirm a schedule you proposed yourself. Peer student must agree.' });
-    }
+    const meetingSpot = order.meetingSpot || order.meeting_spot || 'Campus grounds';
+    const proposedDate = order.proposedDate || order.proposed_date || 'Today';
 
-    if (order.status !== 'accepted' && order.status !== 'scheduled' && order.status !== 'handover_pending') {
-      return res.status(400).json({ error: `Cannot confirm schedule for request with status "${order.status}".` });
-    }
-
-    order.status = 'handover_pending';
-    order.scheduleConfirmedBy = currentUserId;
-    order.scheduledAt = new Date();
-
-    await order.save();
-
-    // AUTOMATIC HANDOVER CODE GENERATION ON BACKEND
     const rawOtp = await autoGenerateHandoverCode({
-      transactionId: order._id,
+      transactionId: orderId,
       transactionType: order.transactionType || 'buy',
-      senderId: sellerId,
-      receiverId: buyerId,
-      meetingSpot: order.meetingSpot,
-      proposedDate: order.proposedDate
+      senderId: sellerIdStr,
+      receiverId: buyerIdStr,
+      meetingSpot,
+      proposedDate
     });
 
-    // REAL-TIME PUSH
-    emitOrderUpdate(buyerId, sellerId, { type: 'schedule_confirmed', orderId: order._id.toString() });
+    const peerIdStr = currentUserIdStr === buyerIdStr ? sellerIdStr : buyerIdStr;
+    await createNotification({
+      user: peerIdStr,
+      type: 'order',
+      title: '✅ Meeting Schedule Confirmed!',
+      message: `${req.user.full_name || 'Student'} confirmed the proposed handover meeting schedule.`,
+      link: `/orders?orderId=${orderId}`
+    });
+
+    emitOrderUpdate(buyerIdStr, sellerIdStr, { type: 'schedule_confirmed', orderId });
 
     return res.json({
       success: true,
-      message: 'Handover schedule agreed! Completion code automatically generated on backend.',
-      order,
-      handover_code: currentUserId === sellerId ? rawOtp : undefined
+      message: 'Handover meeting schedule confirmed!',
+      status: 'handover_pending',
+      handover_code_generated: true,
+      handover_code: currentUserIdStr === sellerIdStr ? rawOtp : undefined
     });
   } catch (err) {
     console.error('Confirm order schedule error:', err);
@@ -438,115 +551,225 @@ router.post('/:id/verify-handover-otp', authenticateToken, async (req, res) => {
       });
     }
 
-    const order = await Order.findById(orderId).populate('book');
-    if (!order) return res.status(404).json({ success: false, message: 'Purchase request not found.' });
-
-    if (order.status === 'completed') {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Already completed`);
-      return res.status(400).json({ success: false, message: 'This transaction has already been completed.' });
-    }
-
-    if (order.status === 'cancelled' || order.status === 'rejected') {
-      return res.status(400).json({ success: false, message: `Cannot verify completion code for request with status "${order.status}".` });
-    }
-
-    const otpRecord = await HandoverOtp.findOne({
-      transactionId: orderId,
-      purpose: 'HANDOVER_COMPLETION'
-    }).sort({ createdAt: -1 });
-
-    if (!otpRecord) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: OTP record not found`);
-      return res.status(400).json({
-        success: false,
-        message: 'Handover code not found. Please request a new code.'
-      });
-    }
-
-    if (otpRecord.sender.toString() === currentUserId) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Seller self-verification blocked`);
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized. The seller cannot complete the transaction alone. The buyer must enter the handover code.'
-      });
-    }
-
-    if (otpRecord.receiver.toString() !== currentUserId) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Unauthorized third-party user`);
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized. Only the buyer can submit the handover code.'
-      });
-    }
-
-    if (otpRecord.verified) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Reused OTP`);
-      return res.status(400).json({
-        success: false,
-        message: 'Handover code has already been used.'
-      });
-    }
-
-    if (new Date() > new Date(otpRecord.expiresAt)) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Expired OTP`);
-      return res.status(400).json({
-        success: false,
-        message: 'Handover code has expired.'
-      });
-    }
-
-    if (otpRecord.attempts >= 5) {
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Max 5 attempts exceeded`);
-      return res.status(400).json({
-        success: false,
-        message: 'Too many verification attempts. Please request a new code.'
-      });
-    }
-
-    const isMatch = await bcrypt.compare(otp.toString().trim(), otpRecord.otpHash);
-    if (!isMatch) {
-      otpRecord.attempts += 1;
-      await otpRecord.save();
-      console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Hash mismatch (Wrong code)`);
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid handover code.'
-      });
-    }
-
-    console.log(`[SECURITY LOG] Handover code verification SUCCESS for Order ID: ${orderId}`);
-
-    otpRecord.verified = true;
-    await otpRecord.save();
-
-    order.status = 'completed';
-    order.paymentStatus = 'paid_at_pickup';
-    order.completedAt = new Date();
-    await order.save();
-
-    if (order.book) {
-      await Book.findByIdAndUpdate(order.book._id, { status: 'sold' });
-    }
+    let order = null;
+    let buyerIdStr = '';
+    let sellerIdStr = '';
 
     if (isMongoConnected) {
+      order = await findOrderById(orderId);
+      if (!order) return res.status(404).json({ success: false, message: 'Purchase request not found.' });
+
+      buyerIdStr = (order.buyer?._id || order.buyer).toString();
+      sellerIdStr = (order.seller?._id || order.seller).toString();
+
+      if (order.status === 'completed') {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Already completed`);
+        return res.status(400).json({ success: false, message: 'This transaction has already been completed.' });
+      }
+
+      if (order.status === 'cancelled' || order.status === 'rejected') {
+        return res.status(400).json({ success: false, message: `Cannot verify completion code for request with status "${order.status}".` });
+      }
+
+      const otpRecord = await HandoverOtp.findOne({
+        transactionId: orderId.toString(),
+        purpose: 'HANDOVER_COMPLETION'
+      }).sort({ createdAt: -1 });
+
+      if (!otpRecord) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: OTP record not found`);
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code not found. Please request a new code.'
+        });
+      }
+
+      if (otpRecord.sender.toString() === currentUserId) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Seller self-verification blocked`);
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized. The seller cannot complete the transaction alone. The buyer must enter the handover code.'
+        });
+      }
+
+      if (otpRecord.receiver.toString() !== currentUserId) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Unauthorized third-party user`);
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized. Only the buyer can submit the handover code.'
+        });
+      }
+
+      if (otpRecord.verified) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Reused OTP`);
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code has already been used.'
+        });
+      }
+
+      if (otpRecord.expiresAt && new Date() > new Date(otpRecord.expiresAt)) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Expired OTP`);
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code has expired.'
+        });
+      }
+
+      if (otpRecord.attempts >= 5) {
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Max 5 attempts exceeded`);
+        return res.status(400).json({
+          success: false,
+          message: 'Too many verification attempts. Please request a new code.'
+        });
+      }
+
+      let isMatch = false;
+      if (otpRecord.otpHash) {
+        isMatch = await bcrypt.compare(otp.toString().trim(), otpRecord.otpHash);
+      } else {
+        isMatch = (otpRecord.otp_code || '').toString().trim() === otp.toString().trim();
+      }
+
+      if (!isMatch) {
+        otpRecord.attempts = (otpRecord.attempts || 0) + 1;
+        await otpRecord.save();
+        console.log(`[SECURITY LOG] Handover code verification FAILED for Order ID: ${orderId}. Reason: Hash mismatch (Wrong code)`);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid handover code.'
+        });
+      }
+
+      console.log(`[SECURITY LOG] Handover code verification SUCCESS for Order ID: ${orderId}`);
+
+      otpRecord.verified = true;
+      await otpRecord.save();
+
+      order.status = 'completed';
+      order.paymentStatus = 'paid_at_pickup';
+      order.completedAt = new Date();
+      await order.save();
+
+      if (order.book) {
+        const bookId = (order.book._id || order.book).toString();
+        if (mongoose.Types.ObjectId.isValid(bookId)) {
+          await Book.findByIdAndUpdate(bookId, { status: 'sold' });
+        } else {
+          await Book.findOneAndUpdate({ $or: [{ _id: bookId }, { id: bookId }] }, { status: 'sold' });
+        }
+      }
+
       try {
         await EcoPoint.create({ user: order.seller, points: 25, action: 'reuse', description: 'Earned +25 Eco Points for completed book sale' });
         await UserProfile.findOneAndUpdate({ user: order.seller }, { $inc: { ecoPoints: 25 } });
         await UserProfile.findOneAndUpdate({ user: order.buyer }, { $inc: { ecoPoints: 15 } });
-
-        const notif = await Notification.create({
-          user: otpRecord.sender,
-          title: '🎉 Handover Verified!',
-          message: 'The buyer verified the handover code! Your book sale & payment is completed.',
-          type: 'order',
-          link: '/orders'
-        });
-
-        // REAL-TIME PUSH
-        emitNotification(otpRecord.sender, notif);
-        emitOrderUpdate(order.buyer, order.seller, { type: 'order_completed', orderId: order._id.toString() });
       } catch (e) {}
+    } else {
+      const store = getStore();
+      order = (store.orders || []).find((o) => (o.id || o._id).toString() === orderId.toString());
+      if (!order) return res.status(404).json({ success: false, message: 'Purchase request not found.' });
+
+      buyerIdStr = (order.buyer || order.buyer_id).toString();
+      sellerIdStr = (order.seller || order.seller_id).toString();
+
+      if (order.status === 'completed') {
+        return res.status(400).json({ success: false, message: 'This transaction has already been completed.' });
+      }
+
+      if (order.status === 'cancelled' || order.status === 'rejected') {
+        return res.status(400).json({ success: false, message: `Cannot verify completion code for request with status "${order.status}".` });
+      }
+
+      const otpRecord = (store.pickupverifications || [])
+        .filter((v) => (v.transaction_id || v.transactionId)?.toString() === orderId.toString())
+        .reverse()[0];
+
+      if (!otpRecord) {
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code not found. Please request a new code.'
+        });
+      }
+
+      const senderIdStr = (otpRecord.sender_id || otpRecord.sender || '').toString();
+      const receiverIdStr = (otpRecord.receiver_id || otpRecord.receiver || '').toString();
+
+      if (senderIdStr && senderIdStr === currentUserId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized. The seller cannot complete the transaction alone. The buyer must enter the handover code.'
+        });
+      }
+
+      if (receiverIdStr && receiverIdStr !== currentUserId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized. Only the buyer can submit the handover code.'
+        });
+      }
+
+      if (otpRecord.verified) {
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code has already been used.'
+        });
+      }
+
+      const expiresAt = otpRecord.expiresAt || otpRecord.expires_at;
+      if (expiresAt && new Date() > new Date(expiresAt)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Handover code has expired.'
+        });
+      }
+
+      if (otpRecord.attempts && otpRecord.attempts >= 5) {
+        return res.status(400).json({
+          success: false,
+          message: 'Too many verification attempts. Please request a new code.'
+        });
+      }
+
+      let isMatch = false;
+      if (otpRecord.otpHash) {
+        isMatch = await bcrypt.compare(otp.toString().trim(), otpRecord.otpHash);
+      } else {
+        isMatch = (otpRecord.otp_code || '').toString().trim() === otp.toString().trim();
+      }
+
+      if (!isMatch) {
+        otpRecord.attempts = (otpRecord.attempts || 0) + 1;
+        saveStore();
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid handover code.'
+        });
+      }
+
+      otpRecord.verified = true;
+
+      order.status = 'completed';
+      order.payment_status = 'paid_at_pickup';
+      order.paymentStatus = 'paid_at_pickup';
+      order.completedAt = new Date().toISOString();
+      order.completed_at = new Date().toISOString();
+
+      const bookObj = (store.books || []).find((b) => (b.id || b._id).toString() === (order.book || order.book_id).toString());
+      if (bookObj) bookObj.status = 'sold';
+
+      saveStore();
     }
+
+    await createNotification({
+      user: sellerIdStr,
+      type: 'order',
+      title: '🎉 Handover Verified!',
+      message: 'The buyer verified the handover code! Your book sale & payment is completed.',
+      link: `/orders?orderId=${orderId}`
+    });
+
+    emitOrderUpdate(buyerIdStr, sellerIdStr, { type: 'order_completed', orderId });
 
     return res.json({
       success: true,
@@ -772,17 +995,29 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       );
 
       const formattedOrders = userOrders.map((o) => {
-        const book = store.books.find((b) => (b._id || b.id).toString() === (o.book?._id || o.book).toString()) || {};
-        const buyerProf = store.userprofiles.find((p) => (p.user?._id || p.user).toString() === (o.buyer?._id || o.buyer).toString()) || {};
-        const sellerProf = store.userprofiles.find((p) => (p.user?._id || p.user).toString() === (o.seller?._id || o.seller).toString()) || {};
-        const buyerUser = store.users.find((u) => (u._id || u.id).toString() === (o.buyer?._id || o.buyer).toString()) || {};
-        const sellerUser = store.users.find((u) => (u._id || u.id).toString() === (o.seller?._id || o.seller).toString()) || {};
+        const otps = store.pickupverifications || [];
+        const activeOtp = otps.find(
+          (v) => (v.transaction_id || v.transactionId)?.toString() === (o.id || o._id)?.toString() && !v.verified
+        );
+        let senderHandoverCode = activeOtp && (activeOtp.sender_id || activeOtp.sender)?.toString() === currentUserId ? activeOtp.otp_code : null;
+
+        const bookId = (o.book?._id || o.book || o.book_id || '').toString();
+        const book = (store.books || []).find((b) => (b.id || b._id).toString() === bookId) || {};
+
+        const buyerIdStr = (o.buyer?._id || o.buyer || o.buyer_id || '').toString();
+        const sellerIdStr = (o.seller?._id || o.seller || o.seller_id || '').toString();
+
+        const buyerUser = (store.users || []).find((u) => (u.id || u._id).toString() === buyerIdStr) || {};
+        const sellerUser = (store.users || []).find((u) => (u.id || u._id).toString() === sellerIdStr) || {};
+
+        const buyerProf = (store.userprofiles || []).find((p) => (p.user || p.user_id)?.toString() === buyerIdStr) || {};
+        const sellerProf = (store.userprofiles || []).find((p) => (p.user || p.user_id)?.toString() === sellerIdStr) || {};
 
         return {
           id: (o._id || o.id).toString(),
           order_number: o.orderNumber,
-          buyer_id: (o.buyer?._id || o.buyer).toString(),
-          seller_id: (o.seller?._id || o.seller).toString(),
+          buyer_id: buyerIdStr,
+          seller_id: sellerIdStr,
           book_id: (book._id || book.id || '').toString(),
           book_title: book.title || 'Textbook',
           book_author: book.author || '',
@@ -795,6 +1030,16 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
           payment_status: o.paymentStatus,
           total_amount: o.totalAmount,
           pickup_notes: o.pickupNotes,
+          meeting_spot: o.meetingSpot || o.meeting_spot || '',
+          proposed_date: o.proposedDate || o.proposed_date || '',
+          start_time: o.proposedStartTime || o.start_time || '',
+          end_time: o.proposedEndTime || o.end_time || '',
+          proposed_by: o.proposedBy || o.proposed_by || null,
+          confirmed_by: o.scheduleConfirmedBy || o.confirmed_by || null,
+          scheduled_at: o.scheduledAt || o.scheduled_at,
+          completed_at: o.completedAt || o.completed_at,
+          has_active_handover_otp: !!activeOtp,
+          handover_code: senderHandoverCode,
           buyer_name: buyerProf.fullName || 'Buyer Student',
           buyer_phone: buyerUser.phone || '',
           buyer_avatar: buyerProf.avatarUrl || '',
@@ -803,7 +1048,7 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
           seller_phone: sellerUser.phone || '',
           seller_avatar: sellerProf.avatarUrl || '',
           seller_rating: sellerProf.rating || 4.8,
-          is_buyer: (o.buyer?._id || o.buyer).toString() === currentUserId,
+          is_buyer: buyerIdStr === currentUserId,
           created_at: o.createdAt
         };
       });

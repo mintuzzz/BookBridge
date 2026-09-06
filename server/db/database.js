@@ -20,7 +20,7 @@ export const initDb = async () => {
   try {
     mongoose.set('strictQuery', false);
     console.log(`🍃 Connecting to MongoDB at: ${uri}`);
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 2000, connectTimeoutMS: 2000 });
     isMongoConnected = true;
     console.log(`✅ Connected to MongoDB Database server cleanly.`);
     return true;

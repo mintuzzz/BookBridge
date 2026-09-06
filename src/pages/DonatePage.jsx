@@ -10,7 +10,7 @@ export default function DonatePage() {
   useEffect(() => {
     fetch('/api/donations')
       .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setDonations(data))
+      .then((data) => setDonations(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

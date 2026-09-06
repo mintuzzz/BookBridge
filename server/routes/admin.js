@@ -225,30 +225,70 @@ router.patch('/users/:id/status', async (req, res) => {
 // 6. Book Listings Management
 router.get('/listings', async (req, res) => {
   try {
-    const books = await Book.find({}).populate('seller', 'email').sort({ createdAt: -1 }).lean();
-    const profiles = await UserProfile.find({}).lean();
-    const profileMap = new Map(profiles.map((p) => [p.user.toString(), p]));
+    if (isMongoConnected) {
+      const books = await Book.find({}).populate('seller', 'email').sort({ createdAt: -1 }).lean();
+      const profiles = await UserProfile.find({}).lean();
+      const profileMap = new Map(profiles.map((p) => [p.user.toString(), p]));
 
-    const formatted = books.map((b) => {
-      const p = profileMap.get(b.seller?._id ? b.seller._id.toString() : (b.seller || '').toString()) || {};
-      return {
-        id: b._id.toString(),
-        title: b.title,
-        author: b.author,
-        subject: b.subject,
-        department: b.department,
-        semester: b.semester,
-        condition: b.condition,
-        selling_price: b.sellingPrice,
-        transaction_type: b.transactionType,
-        status: b.status,
-        seller_name: p.fullName || 'Student',
-        seller_email: b.seller?.email || '',
-        created_at: b.createdAt
-      };
-    });
+      const formatted = books.map((b) => {
+        const p = profileMap.get(b.seller?._id ? b.seller._id.toString() : (b.seller || '').toString()) || {};
+        const sellPrice = b.sellingPrice !== undefined ? b.sellingPrice : (b.selling_price !== undefined ? b.selling_price : 0);
+        const transType = b.transactionType || b.transaction_type || 'buy';
+        return {
+          id: b._id.toString(),
+          title: b.title,
+          author: b.author,
+          subject: b.subject,
+          department: b.department,
+          semester: b.semester,
+          condition: b.condition,
+          selling_price: sellPrice,
+          sellingPrice: sellPrice,
+          transaction_type: transType,
+          transactionType: transType,
+          status: b.status,
+          seller_name: p.fullName || 'Student',
+          seller_email: b.seller?.email || '',
+          created_at: b.createdAt
+        };
+      });
 
-    return res.json(formatted);
+      return res.json(formatted);
+    } else {
+      const store = getStore();
+      const books = store.books || [];
+      const profiles = store.userprofiles || [];
+      const users = store.users || [];
+      const profileMap = new Map(profiles.map((p) => [p.user?.toString(), p]));
+      const userMap = new Map(users.map((u) => [(u._id || u.id)?.toString(), u]));
+
+      const formatted = books.map((b) => {
+        const sellerId = (b.seller?._id || b.seller || '').toString();
+        const p = profileMap.get(sellerId) || {};
+        const u = userMap.get(sellerId) || {};
+        const sellPrice = b.sellingPrice !== undefined ? b.sellingPrice : (b.selling_price !== undefined ? b.selling_price : 0);
+        const transType = b.transactionType || b.transaction_type || 'buy';
+        return {
+          id: (b._id || b.id).toString(),
+          title: b.title,
+          author: b.author,
+          subject: b.subject,
+          department: b.department,
+          semester: b.semester,
+          condition: b.condition,
+          selling_price: sellPrice,
+          sellingPrice: sellPrice,
+          transaction_type: transType,
+          transactionType: transType,
+          status: b.status,
+          seller_name: p.fullName || 'Student',
+          seller_email: u.email || '',
+          created_at: b.createdAt || b.created_at
+        };
+      });
+
+      return res.json(formatted);
+    }
   } catch (err) {
     console.error('Admin get listings error:', err);
     return res.status(500).json({ error: 'Failed to fetch book listings.' });

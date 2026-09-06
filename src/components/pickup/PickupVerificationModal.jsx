@@ -3,6 +3,8 @@ import { useNotification } from '../../context/NotificationContext';
 import confetti from 'canvas-confetti';
 import { X, ShieldCheck, QrCode, Key, CheckCircle2, AlertCircle } from 'lucide-react';
 
+import { safeFetchJson } from '../../config/api';
+
 export default function PickupVerificationModal({ order, isBuyer, isSeller, onClose, onVerified }) {
   const { showToast } = useNotification();
   const [inputOtp, setInputOtp] = useState('');
@@ -12,7 +14,7 @@ export default function PickupVerificationModal({ order, isBuyer, isSeller, onCl
   const handleVerify = async (otpToVerify = inputOtp) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/verify-pickup`, {
+      const data = await safeFetchJson(`/api/orders/${order.id}/verify-pickup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -23,9 +25,6 @@ export default function PickupVerificationModal({ order, isBuyer, isSeller, onCl
           qr_data: order.qr_code_data
         })
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
       // Trigger Celebration Confetti!
       try {

@@ -7,39 +7,36 @@ import {
   PlusCircle,
   Repeat,
   Gift,
-  HelpCircle,
-  Leaf,
-  ShieldCheck,
-  Zap,
   ArrowRight,
-  Sparkles,
-  CheckCircle2,
-  Users
+  Sparkles
 } from 'lucide-react';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [allBooks, setAllBooks] = useState([]);
   const [featuredBooks, setFeaturedBooks] = useState([]);
-  const [affordableBooks, setAffordableBooks] = useState([]);
   const [freeBooks, setFreeBooks] = useState([]);
-  const [requests, setRequests] = useState([]);
+  const [stats, setStats] = useState({ booksReused: 0, moneySaved: 0, peerExchanges: 0, freeDonations: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/books?status=available')
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        setFeaturedBooks(data.slice(0, 4));
-        setAffordableBooks([...data].sort((a, b) => a.selling_price - b.selling_price).slice(0, 4));
-        setFreeBooks(data.filter((b) => b.transaction_type === 'donate').slice(0, 4));
+        const safeData = Array.isArray(data) ? data : [];
+        setAllBooks(safeData);
+        setFeaturedBooks(safeData.slice(0, 4));
+        setFreeBooks(safeData.filter((b) => (b.transaction_type || b.transactionType) === 'donate').slice(0, 4));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
 
-    fetch('/api/requests')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setRequests(data.slice(0, 3)))
+    fetch('/api/books/stats')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setStats(data);
+      })
       .catch(() => {});
   }, []);
 
@@ -50,16 +47,24 @@ export default function HomePage() {
     }
   };
 
-  const categories = [
-    { name: 'Computer Science', icon: '💻', count: '120+ Books' },
-    { name: 'Engineering', icon: '⚙️', count: '95+ Books' },
-    { name: 'Medicine', icon: '🩺', count: '80+ Books' },
-    { name: 'Commerce', icon: '📊', count: '60+ Books' },
-    { name: 'Management', icon: '📈', count: '45+ Books' },
-    { name: 'Arts', icon: '🎨', count: '30+ Books' },
-    { name: 'Science', icon: '🔬', count: '50+ Books' },
-    { name: 'Law', icon: '⚖️', count: '25+ Books' }
+  const categoryList = [
+    { name: 'Computer Science', icon: '💻' },
+    { name: 'Engineering', icon: '⚙️' },
+    { name: 'Medicine', icon: '🩺' },
+    { name: 'Commerce', icon: '📊' },
+    { name: 'Management', icon: '📈' },
+    { name: 'Arts', icon: '🎨' },
+    { name: 'Science', icon: '🔬' },
+    { name: 'Law', icon: '⚖️' }
   ];
+
+  const getDeptCount = (deptName) => {
+    const safeList = Array.isArray(allBooks) ? allBooks : [];
+    const count = safeList.filter((b) => b.department === deptName).length;
+    return `${count} ${count === 1 ? 'Book' : 'Books'}`;
+  };
+
+  const heroPreviewBook = featuredBooks.length > 0 ? featuredBooks[0] : null;
 
   return (
     <div>
@@ -138,48 +143,88 @@ export default function HomePage() {
 
             {/* Hero Visual Card Stack */}
             <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
-              <div
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  maxWidth: '440px',
-                  backgroundColor: 'white',
-                  borderRadius: 'var(--radius-xl)',
-                  padding: '1.75rem',
-                  boxShadow: 'var(--shadow-xl)',
-                  border: '1px solid var(--border-light)'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--emerald-700)', fontWeight: 700 }}>
-                      AS
+              {heroPreviewBook ? (
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    maxWidth: '440px',
+                    backgroundColor: 'white',
+                    borderRadius: 'var(--radius-xl)',
+                    padding: '1.75rem',
+                    boxShadow: 'var(--shadow-xl)',
+                    border: '1px solid var(--border-light)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {heroPreviewBook.seller_avatar ? (
+                        <img
+                          src={heroPreviewBook.seller_avatar}
+                          alt={heroPreviewBook.seller_name}
+                          style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--emerald-700)', fontWeight: 700 }}>
+                          {heroPreviewBook.seller_name ? heroPreviewBook.seller_name.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 700 }}>{heroPreviewBook.seller_name || 'Verified Student'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{heroPreviewBook.department} · Sem {heroPreviewBook.semester}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 700 }}>Alex Smith</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Computer Science · Sem 5</div>
+                    <span className="badge badge-emerald">Verified Student</span>
+                  </div>
+
+                  <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', height: '180px', marginBottom: '1rem', position: 'relative', backgroundColor: '#f1f5f9' }}>
+                    {heroPreviewBook.images && heroPreviewBook.images.length > 0 ? (
+                      <img
+                        src={heroPreviewBook.images[0]}
+                        alt={heroPreviewBook.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                        <BookOpen size={48} color="var(--emerald-600)" style={{ marginBottom: '0.5rem' }} />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>No Image Available</span>
+                      </div>
+                    )}
+                    <div style={{ position: 'absolute', bottom: '10px', left: '10px', backgroundColor: 'rgba(255,255,255,0.92)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontWeight: 800, fontSize: '1rem', color: 'var(--emerald-700)' }}>
+                      {(heroPreviewBook.transaction_type || heroPreviewBook.transactionType) === 'donate' ? 'FREE' : (heroPreviewBook.transaction_type || heroPreviewBook.transactionType) === 'exchange' ? 'Exchange' : `₹${heroPreviewBook.selling_price ?? heroPreviewBook.sellingPrice ?? 0}`}
                     </div>
                   </div>
-                  <span className="badge badge-emerald">Verified Student</span>
-                </div>
 
-                <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', height: '180px', marginBottom: '1rem', position: 'relative' }}>
-                  <img
-                    src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80"
-                    alt="Textbook"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  <div style={{ position: 'absolute', bottom: '10px', left: '10px', backgroundColor: 'rgba(255,255,255,0.92)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontWeight: 800, fontSize: '1rem', color: 'var(--emerald-700)' }}>
-                    ₹450 <span style={{ fontSize: '0.75rem', textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹1,200</span>
+                  <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.35rem' }}>{heroPreviewBook.title}</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <span>📍 {heroPreviewBook.location}</span>
+                    <span style={{ color: 'var(--emerald-600)', fontWeight: 700 }}>{heroPreviewBook.condition}</span>
                   </div>
                 </div>
-
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.35rem' }}>Introduction to Algorithms (4th Ed)</h4>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  <span>📍 Central Library Grounds</span>
-                  <span style={{ color: 'var(--emerald-600)', fontWeight: 700 }}>Like New</span>
+              ) : (
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    maxWidth: '440px',
+                    backgroundColor: 'white',
+                    borderRadius: 'var(--radius-xl)',
+                    padding: '2.5rem 1.75rem',
+                    boxShadow: 'var(--shadow-xl)',
+                    border: '1px solid var(--border-light)',
+                    textAlign: 'center'
+                  }}
+                >
+                  <BookOpen size={56} color="var(--emerald-600)" style={{ margin: '0 auto 1rem' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Campus Marketplace Ready</h3>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                    Be the first student to list a textbook and start reusing course materials today!
+                  </p>
+                  <Link to="/sell" className="btn btn-emerald btn-md">
+                    <PlusCircle size={16} /> List Your First Book
+                  </Link>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -189,19 +234,19 @@ export default function HomePage() {
       <section style={{ backgroundColor: 'var(--emerald-700)', color: 'white', padding: '1.75rem 0' }}>
         <div className="container" style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem', textAlign: 'center' }}>
           <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🌱 12,450+</div>
+            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🌱 {stats.booksReused}</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Books Reused</div>
           </div>
           <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800 }}>💰 ₹48.5 Lakhs</div>
+            <div style={{ fontSize: '2rem', fontWeight: 800 }}>💰 ₹{stats.moneySaved.toLocaleString()}</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Student Money Saved</div>
           </div>
           <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🔄 3,820+</div>
+            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🔄 {stats.peerExchanges}</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Peer Exchanges</div>
           </div>
           <div>
-            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🎁 1,290+</div>
+            <div style={{ fontSize: '2rem', fontWeight: 800 }}>🎁 {stats.freeDonations}</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>Free Books Donated</div>
           </div>
         </div>
@@ -216,7 +261,7 @@ export default function HomePage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
-            {categories.map((cat) => (
+            {categoryList.map((cat) => (
               <Link
                 key={cat.name}
                 to={`/browse?department=${encodeURIComponent(cat.name)}`}
@@ -225,7 +270,7 @@ export default function HomePage() {
               >
                 <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{cat.icon}</div>
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-dark)' }}>{cat.name}</div>
-                <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '2px' }}>{cat.count}</div>
+                <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '2px' }}>{getDeptCount(cat.name)}</div>
               </Link>
             ))}
           </div>
@@ -243,11 +288,26 @@ export default function HomePage() {
             <Link to="/browse" className="btn btn-outline btn-sm">View All Books <ArrowRight size={16} /></Link>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.5rem' }}>
-            {featuredBooks.map((book) => (
-              <BookCard key={book.id} book={book} />
-            ))}
-          </div>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>Loading textbooks...</div>
+          ) : featuredBooks.length === 0 ? (
+            <div className="card" style={{ padding: '3.5rem 1.5rem', textAlign: 'center' }}>
+              <BookOpen size={48} color="var(--emerald-600)" style={{ margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>No books available yet</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+                Be the first student to list a textbook for your peers on campus.
+              </p>
+              <Link to="/sell" className="btn btn-emerald btn-sm">
+                <PlusCircle size={16} /> List Your First Book
+              </Link>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.5rem' }}>
+              {featuredBooks.map((book) => (
+                <BookCard key={book.id} book={book} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -267,11 +327,26 @@ export default function HomePage() {
             <Link to="/donations" className="btn btn-outline btn-sm">Browse Free Feed <ArrowRight size={16} /></Link>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.5rem' }}>
-            {freeBooks.map((book) => (
-              <BookCard key={book.id} book={book} />
-            ))}
-          </div>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>Loading free donations...</div>
+          ) : freeBooks.length === 0 ? (
+            <div className="card" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+              <Gift size={48} color="var(--amber-500)" style={{ margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>No free book donations yet</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+                Donate your used textbooks to help fellow students in need.
+              </p>
+              <Link to="/sell" className="btn btn-emerald btn-sm" style={{ backgroundColor: 'var(--amber-600)', borderColor: 'var(--amber-600)' }}>
+                Donate a Book
+              </Link>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.5rem' }}>
+              {freeBooks.map((book) => (
+                <BookCard key={book.id} book={book} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

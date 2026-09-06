@@ -29,7 +29,7 @@ export default function RequestsPage() {
       const res = await fetch('/api/requests');
       if (res.ok) {
         const data = await res.json();
-        setRequests(data);
+        setRequests(Array.isArray(data) ? data : []);
       }
     } catch (err) {
     } finally {
@@ -131,12 +131,18 @@ export default function RequestsPage() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <img
-                      src={r.requester_avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
-                      alt={r.requester_name}
-                      style={{ width: '28px', height: '28px', borderRadius: '50%' }}
-                    />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{r.requester_name.split(' ')[0]}</span>
+                    {r.requester_avatar ? (
+                      <img
+                        src={r.requester_avatar}
+                        alt={r.requester_name}
+                        style={{ width: '28px', height: '28px', borderRadius: '50%' }}
+                      />
+                    ) : (
+                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', color: 'var(--emerald-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.75rem' }}>
+                        {r.requester_name ? r.requester_name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                    )}
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{r.requester_name ? r.requester_name.split(' ')[0] : 'Student'}</span>
                   </div>
                 </div>
               </div>

@@ -273,9 +273,9 @@ router.post('/verify-otp', async (req, res) => {
           institution: tempUser.institution,
           department: tempUser.department,
           semester: tempUser.semester,
-          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-          ecoPoints: 50,
-          rating: 5.0
+          avatarUrl: '',
+          ecoPoints: 0,
+          rating: 0
         });
 
         await Session.create({
@@ -311,8 +311,8 @@ router.post('/verify-otp', async (req, res) => {
         department: newProfile ? newProfile.department : tempUser.department,
         semester: newProfile ? newProfile.semester : tempUser.semester,
         avatar_url: newProfile ? newProfile.avatarUrl : '',
-        eco_points: newProfile ? newProfile.ecoPoints : 50,
-        rating: newProfile ? newProfile.rating : 5.0
+        eco_points: newProfile ? newProfile.ecoPoints : 0,
+        rating: newProfile ? (newProfile.rating || 0) : 0
       };
 
       token = generateToken(newUser, newProfile);
@@ -342,9 +342,9 @@ router.post('/verify-otp', async (req, res) => {
           institution: tempUser.institution,
           department: tempUser.department,
           semester: tempUser.semester,
-          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-          ecoPoints: 50,
-          rating: 5.0
+          avatarUrl: '',
+          ecoPoints: 0,
+          rating: 0
         };
 
         store.users.push(newUser);
@@ -364,8 +364,8 @@ router.post('/verify-otp', async (req, res) => {
         department: newProfile ? newProfile.department : tempUser.department,
         semester: newProfile ? newProfile.semester : tempUser.semester,
         avatar_url: newProfile ? newProfile.avatarUrl : '',
-        eco_points: newProfile ? newProfile.ecoPoints : 50,
-        rating: newProfile ? newProfile.rating : 5.0
+        eco_points: newProfile ? newProfile.ecoPoints : 0,
+        rating: newProfile ? (newProfile.rating || 0) : 0
       };
 
       token = generateToken(newUser, newProfile);
@@ -677,9 +677,9 @@ router.post('/login', async (req, res) => {
       institution: profile ? profile.institution : 'State University of Technology',
       department: profile ? profile.department : 'Computer Science',
       semester: profile ? profile.semester : 1,
-      avatar_url: profile ? profile.avatarUrl : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      eco_points: profile ? profile.ecoPoints : 50,
-      rating: profile ? profile.rating : 5.0,
+      avatar_url: profile ? profile.avatarUrl : '',
+      eco_points: profile ? profile.ecoPoints : 0,
+      rating: profile ? (profile.rating || 0) : 0,
       created_at: user.createdAt
     };
 
@@ -734,8 +734,8 @@ router.get('/me', authenticateToken, async (req, res) => {
       department: profile ? profile.department : 'Computer Science',
       semester: profile ? profile.semester : 1,
       avatar_url: profile ? profile.avatarUrl : '',
-      eco_points: profile ? profile.ecoPoints : 50,
-      rating: profile ? profile.rating : 5.0,
+      eco_points: profile ? profile.ecoPoints : 0,
+      rating: profile ? (profile.rating || 0) : 0,
       status: user.status,
       created_at: user.createdAt
     });
@@ -780,8 +780,8 @@ router.put('/profile', authenticateToken, async (req, res) => {
         department: profile ? profile.department : department,
         semester: profile ? profile.semester : semester,
         avatar_url: profile ? profile.avatarUrl : avatar_url,
-        eco_points: profile ? profile.ecoPoints : 50,
-        rating: profile ? profile.rating : 5.0
+        eco_points: profile ? profile.ecoPoints : 0,
+        rating: profile ? (profile.rating || 0) : 0
       }
     });
   } catch (err) {

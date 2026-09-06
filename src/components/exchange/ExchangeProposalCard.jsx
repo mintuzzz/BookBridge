@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Repeat, Check, X, ArrowRightLeft, Clock, CheckCircle2, XCircle, Calendar, MapPin, MessageSquare, Send, Sparkles, Key, ShieldCheck } from 'lucide-react';
+import { Repeat, Check, X, ArrowRightLeft, Clock, CheckCircle2, XCircle, Calendar, MapPin, MessageSquare, Send, Sparkles, Key, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useNotification } from '../../context/NotificationContext';
+import { validateScheduleInput } from '../../utils/scheduleValidation';
+import { safeFetchJson } from '../../config/api';
 
 export default function ExchangeProposalCard({ proposal, currentUserId, activeToken, onAccept, onReject, onUpdate }) {
+  const { showToast } = useNotification();
   const [loading, setLoading] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
@@ -12,10 +16,19 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
   const [otpSuccess, setOtpSuccess] = useState('');
 
   // Schedule Inputs
-  const [meetingSpot, setMeetingSpot] = useState(proposal.meeting_spot || 'Central Library Grounds');
-  const [proposedDate, setProposedDate] = useState(proposal.proposed_date || 'Aug 28');
-  const [startTime, setStartTime] = useState(proposal.start_time || '1:00 PM');
-  const [endTime, setEndTime] = useState(proposal.end_time || '2:00 PM');
+  const [meetingSpot, setMeetingSpot] = useState(proposal.meeting_spot || '');
+  const [proposedDate, setProposedDate] = useState(proposal.proposed_date || '');
+  const [startTime, setStartTime] = useState(proposal.start_time || '');
+  const [endTime, setEndTime] = useState(proposal.end_time || '');
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleSuccess, setScheduleSuccess] = useState('');
+
+  useEffect(() => {
+    setMeetingSpot(proposal.meeting_spot || '');
+    setProposedDate(proposal.proposed_date || '');
+    setStartTime(proposal.start_time || '');
+    setEndTime(proposal.end_time || '');
+  }, [proposal.meeting_spot, proposal.proposed_date, proposal.start_time, proposal.end_time]);
 
   // Messages State
   const [messages, setMessages] = useState([]);
@@ -43,13 +56,12 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch(`/api/exchanges/${proposal.id}/messages`, {
+      const propId = proposal?.id || proposal?._id;
+      if (!propId) return;
+      const data = await safeFetchJson(`/api/exchanges/${propId}/messages`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-      }
+      setMessages(data);
     } catch (e) {}
   };
 
@@ -57,7 +69,9 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
     e.preventDefault();
     if (!newMessageText.trim() || !activeToken) return;
     try {
-      const res = await fetch(`/api/exchanges/${proposal.id}/messages`, {
+      const propId = proposal?.id || proposal?._id;
+      if (!propId) return;
+      await safeFetchJson(`/api/exchanges/${propId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,10 +79,8 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
         },
         body: JSON.stringify({ message: newMessageText })
       });
-      if (res.ok) {
-        setNewMessageText('');
-        fetchMessages();
-      }
+      setNewMessageText('');
+      fetchMessages();
     } catch (e) {}
   };
 
@@ -79,7 +91,9 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
     setOtpError('');
     setOtpSuccess('');
     try {
-      const res = await fetch(`/api/exchanges/${proposal.id}/verify-handover-otp`, {
+      const propId = proposal?.id || proposal?._id;
+      if (!propId) throw new Error('Invalid proposal ID');
+      const data = await safeFetchJson(`/api/exchanges/${propId}/verify-handover-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,9 +101,7 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
         },
         body: JSON.stringify({ otp: inputOtp })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Verification failed');
-      setOtpSuccess(data.message);
+      setOtpSuccess(data.message || 'Handover verified successfully!');
       setInputOtp('');
       if (onUpdate) onUpdate();
     } catch (e) {
@@ -102,9 +114,34 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
   const handleProposeScheduleSubmit = async (e) => {
     e.preventDefault();
     if (!activeToken) return;
+
+    const propId = proposal?.id || proposal?._id;
+    if (!propId) {
+      showToast('Exchange information is missing. Please reopen the exchange and try again.', 'error');
+      setScheduleError('Exchange information is missing. Please reopen the exchange and try again.');
+      return;
+    }
+
+    // Validate form fields
+    const validationError = validateScheduleInput({
+      meetingSpot,
+      proposedDate,
+      startTime,
+      endTime
+    });
+
+    if (validationError) {
+      setScheduleError(validationError);
+      showToast(validationError, 'error', 'Validation Error');
+      return;
+    }
+
     setLoading(true);
+    setScheduleError('');
+    setScheduleSuccess('');
+
     try {
-      const res = await fetch(`/api/exchanges/${proposal.id}/propose-schedule`, {
+      const data = await safeFetchJson(`/api/exchanges/${propId}/propose-schedule`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,11 +154,14 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
           end_time: endTime
         })
       });
-      if (res.ok) {
-        setShowScheduleForm(false);
-        if (onUpdate) onUpdate();
-      }
-    } catch (e) {
+
+      setScheduleSuccess('Schedule Proposed ✓');
+      showToast(data.message || 'Meeting schedule proposed successfully.', 'success', 'Schedule Proposed');
+      setShowScheduleForm(false);
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      setScheduleError(err.message || 'Unable to propose the meeting schedule. Please try again.');
+      showToast(err.message || 'Unable to propose the meeting schedule. Please try again.', 'error', 'Schedule Failed');
     } finally {
       setLoading(false);
     }
@@ -129,16 +169,18 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
 
   const handleConfirmScheduleClick = async () => {
     if (!activeToken) return;
+    const propId = proposal?.id || proposal?._id;
+    if (!propId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/exchanges/${proposal.id}/confirm-schedule`, {
+      const data = await safeFetchJson(`/api/exchanges/${propId}/confirm-schedule`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        if (onUpdate) onUpdate();
-      }
+      showToast(data.message || 'Meeting schedule confirmed successfully!', 'success');
+      if (onUpdate) onUpdate();
     } catch (e) {
+      showToast(e.message || 'Failed to confirm schedule.', 'error');
     } finally {
       setLoading(false);
     }
@@ -252,7 +294,7 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
       {isRecipient && isPending && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.85rem' }}>
           <button
-            onClick={() => onReject(proposal.id)}
+            onClick={() => onReject(proposal.id || proposal._id)}
             disabled={loading}
             className="btn btn-sm btn-outline"
             style={{ color: '#ef4444', borderColor: '#fca5a5' }}
@@ -260,7 +302,7 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
             <X size={14} /> Reject
           </button>
           <button
-            onClick={() => onAccept(proposal.id)}
+            onClick={() => onAccept(proposal.id || proposal._id)}
             disabled={loading}
             className="btn btn-sm btn-emerald"
           >
@@ -276,12 +318,22 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
             <Calendar size={16} color="var(--blue-600)" /> Arrange Meeting & Schedule
           </div>
 
-          {/* Current Schedule Details */}
+          {/* Saved Proposed Meeting Display */}
           {proposal.proposed_date && (
-            <div style={{ fontSize: '0.825rem', color: 'var(--text-dark)', marginBottom: '0.75rem', backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div><strong>Meeting Spot:</strong> {proposal.meeting_spot}</div>
-              <div><strong>Proposed Date:</strong> {proposal.proposed_date}</div>
-              <div><strong>Time Window:</strong> {proposal.start_time} – {proposal.end_time}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', marginBottom: '0.75rem', backgroundColor: 'white', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.35rem', color: 'var(--blue-700)' }}>Proposed Meeting</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                📍 <strong>Spot:</strong> {proposal.meeting_spot}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                📅 <strong>Date:</strong> {proposal.proposed_date}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                🕐 <strong>Time Window:</strong> {proposal.start_time} – {proposal.end_time}
+              </div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isScheduled || isHandoverPending ? 'var(--emerald-600)' : 'var(--amber-600)' }}>
+                Status: {isScheduled || isHandoverPending ? 'Confirmed ✓' : 'Pending Confirmation'}
+              </div>
             </div>
           )}
 
@@ -300,7 +352,7 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
           {/* Self Proposed Schedule: Waiting for peer to confirm */}
           {selfProposed && !isScheduled && !isHandoverPending && (
             <div style={{ fontSize: '0.8rem', color: 'var(--blue-700)', backgroundColor: '#eff6ff', padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.75rem' }}>
-              ⏳ Waiting for peer student to confirm your proposed schedule. You can also update proposed details below:
+              ⏳ Waiting for peer student to confirm proposed schedule. You can also update proposed details below:
             </div>
           )}
 
@@ -314,26 +366,36 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
           {/* Schedule Form */}
           {(showScheduleForm || (!proposal.proposed_date && showScheduleForm)) && (
             <form onSubmit={handleProposeScheduleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem', backgroundColor: 'white', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+              {scheduleError && (
+                <div style={{ fontSize: '0.8rem', color: '#dc2626', backgroundColor: '#fef2f2', padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <AlertCircle size={14} /> {scheduleError}
+                </div>
+              )}
+              {scheduleSuccess && (
+                <div style={{ fontSize: '0.8rem', color: '#16a34a', backgroundColor: '#f0fdf4', padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid #86efac' }}>
+                  {scheduleSuccess}
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Meeting Spot</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Meeting Spot *</label>
                   <input
                     type="text"
                     required
                     value={meetingSpot}
                     onChange={(e) => setMeetingSpot(e.target.value)}
-                    placeholder="Central Library Grounds"
+                    placeholder="College Library Grounds"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Date</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Date *</label>
                   <input
-                    type="text"
+                    type="date"
                     required
                     value={proposedDate}
                     onChange={(e) => setProposedDate(e.target.value)}
-                    placeholder="e.g. Aug 28"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
@@ -341,24 +403,22 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Start Time</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Start Time *</label>
                   <input
-                    type="text"
+                    type="time"
                     required
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    placeholder="1:00 PM"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>End Time</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>End Time *</label>
                   <input
-                    type="text"
+                    type="time"
                     required
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    placeholder="2:00 PM"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
@@ -382,31 +442,17 @@ export default function ExchangeProposalCard({ proposal, currentUserId, activeTo
           {otpError && <div style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem' }}>⚠️ {otpError}</div>}
           {otpSuccess && <div style={{ color: '#10b981', fontSize: '0.8rem', marginBottom: '0.5rem' }}>✅ {otpSuccess}</div>}
 
-          {/* SENDER/PROVIDER CODE DISPLAY (AUTOMATICALLY POPULATED) */}
-          {isRecipient ? (
-            /* Wait: For Exchange, both users send a book. Owner is Provider 1, Requester is Provider 2. Sender sees their handover code */
-            proposal.handover_code ? (
-              <div style={{ backgroundColor: 'white', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #93c5fd', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700 }}>
-                  🔑 Handover Code: <strong style={{ fontSize: '1.15rem', letterSpacing: '3px', color: '#1d4ed8' }}>{proposal.handover_code}</strong>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Share this code with the recipient after handing over the book.
-                </div>
+          {/* SENDER CODE DISPLAY (AUTOMATICALLY POPULATED) */}
+          {proposal.handover_code ? (
+            <div style={{ backgroundColor: 'white', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #93c5fd', marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700 }}>
+                🔑 Handover Code: <strong style={{ fontSize: '1.15rem', letterSpacing: '3px', color: '#1d4ed8' }}>{proposal.handover_code}</strong>
               </div>
-            ) : null
-          ) : (
-            proposal.handover_code ? (
-              <div style={{ backgroundColor: 'white', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #93c5fd', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700 }}>
-                  🔑 Handover Code: <strong style={{ fontSize: '1.15rem', letterSpacing: '3px', color: '#1d4ed8' }}>{proposal.handover_code}</strong>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Share this code with the recipient after handing over the book.
-                </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Share this code with the recipient after handing over the book.
               </div>
-            ) : null
-          )}
+            </div>
+          ) : null}
 
           {/* RECIPIENT VERIFY CODE FORM */}
           <form onSubmit={handleVerifyHandoverOtpSubmit} style={{ backgroundColor: 'white', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}>

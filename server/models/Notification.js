@@ -3,8 +3,7 @@ import mongoose from 'mongoose';
 const notificationSchema = new mongoose.Schema(
   {
     user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
@@ -18,10 +17,21 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['order', 'exchange', 'request', 'system', 'eco'],
       default: 'system'
     },
     link: {
+      type: String,
+      default: null
+    },
+    relatedBook: {
+      type: String,
+      default: null
+    },
+    relatedExchange: {
+      type: String,
+      default: null
+    },
+    relatedRequest: {
       type: String,
       default: null
     },

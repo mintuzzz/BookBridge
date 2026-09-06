@@ -14,7 +14,8 @@ import {
   Gift,
   User,
   ShoppingBag,
-  ArrowLeft
+  ArrowLeft,
+  BookOpen
 } from 'lucide-react';
 
 export default function BookDetailPage() {
@@ -111,6 +112,10 @@ export default function BookDetailPage() {
   const isOwner = currentUserId && currentUserId.toString() === book.seller_id?.toString();
   const isAvailable = book.status === 'available';
 
+  const transactionType = book.transaction_type || book.transactionType || 'buy';
+  const sellingPrice = book.selling_price !== undefined ? book.selling_price : (book.sellingPrice !== undefined ? book.sellingPrice : 0);
+  const originalPrice = book.original_price !== undefined ? book.original_price : (book.originalPrice !== undefined ? book.originalPrice : 0);
+
   return (
     <div style={{ padding: '2.5rem 0' }}>
       <div className="container">
@@ -123,15 +128,22 @@ export default function BookDetailPage() {
           {/* Left Column: Image Gallery */}
           <div>
             <div className="card" style={{ overflow: 'hidden', height: '400px', backgroundColor: 'var(--bg-secondary)', marginBottom: '1rem', position: 'relative' }}>
-              <img
-                src={book.images && book.images.length > 0 ? book.images[activeImageIndex] : 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80'}
-                alt={book.title}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+              {book.images && book.images.length > 0 ? (
+                <img
+                  src={book.images[activeImageIndex]}
+                  alt={book.title}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', color: '#64748b' }}>
+                  <BookOpen size={64} color="var(--emerald-600)" style={{ marginBottom: '0.75rem', opacity: 0.8 }} />
+                  <span style={{ fontSize: '1rem', fontWeight: 600 }}>No Image Available</span>
+                </div>
+              )}
               <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
-                {book.transaction_type === 'donate' ? (
+                {transactionType === 'donate' ? (
                   <span className="badge badge-amber"><Gift size={14} /> Free Donation</span>
-                ) : book.transaction_type === 'exchange' ? (
+                ) : transactionType === 'exchange' ? (
                   <span className="badge badge-blue"><Repeat size={14} /> Exchange</span>
                 ) : (
                   <span className="badge badge-emerald"><Tag size={14} /> Resale</span>
@@ -178,16 +190,16 @@ export default function BookDetailPage() {
             <div className="card" style={{ padding: '1.25rem', backgroundColor: 'var(--bg-primary)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Listing Price</div>
-                {book.transaction_type === 'donate' ? (
+                {transactionType === 'donate' ? (
                   <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--amber-600)' }}>FREE</div>
-                ) : book.transaction_type === 'exchange' ? (
+                ) : transactionType === 'exchange' ? (
                   <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--blue-600)' }}>Direct Swap / Exchange</div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
-                    <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--emerald-600)' }}>₹{book.selling_price}</span>
-                    {book.original_price > book.selling_price && (
+                    <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--emerald-600)' }}>₹{sellingPrice}</span>
+                    {originalPrice > sellingPrice && (
                       <span style={{ fontSize: '1rem', textDecoration: 'line-through', color: 'var(--text-light)' }}>
-                        Original ₹{book.original_price}
+                        Original ₹{originalPrice}
                       </span>
                     )}
                   </div>
@@ -195,7 +207,7 @@ export default function BookDetailPage() {
               </div>
 
               {/* Payment Method Selector */}
-              {book.transaction_type === 'buy' && (
+              {transactionType === 'buy' && (
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Pay at Handover</div>
                   <select
@@ -253,16 +265,28 @@ export default function BookDetailPage() {
             {/* Seller Profile Card */}
             <div className="card" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <img
-                  src={book.seller_avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
-                  alt={book.seller_name}
-                  style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }}
-                />
+                {book.seller_avatar ? (
+                  <img
+                    src={book.seller_avatar}
+                    alt={book.seller_name}
+                    style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', color: 'var(--emerald-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>
+                    {book.seller_name ? book.seller_name.charAt(0).toUpperCase() : 'S'}
+                  </div>
+                )}
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{book.seller_name}</div>
                   <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)' }}>{book.seller_institution}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.75rem', color: 'var(--amber-600)', fontWeight: 700, marginTop: '2px' }}>
-                    <Star size={12} fill="var(--amber-500)" stroke="none" /> {book.seller_rating || 4.8} Student Rating
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.75rem', color: 'var(--amber-600)', fontWeight: 600, marginTop: '2px' }}>
+                    {book.seller_rating > 0 ? (
+                      <>
+                        <Star size={12} fill="var(--amber-500)" stroke="none" /> {book.seller_rating} Student Rating
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>No reviews yet</span>
+                    )}
                   </div>
                 </div>
               </div>

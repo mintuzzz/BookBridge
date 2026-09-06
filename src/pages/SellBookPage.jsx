@@ -132,8 +132,13 @@ export default function SellBookPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || 'Failed to Create Listing');
 
+      const bookId = data.book?.id || data.book?._id;
       showToast('🎉 Your book with uploaded photos has been published!', 'success', 'Listing Published (+20 Eco Points)');
-      navigate(`/books/${data.book.id}`);
+      if (bookId) {
+        navigate(`/books/${bookId}`);
+      } else {
+        navigate('/browse');
+      }
     } catch (err) {
       showToast(err.message, 'error', 'Failed to Create Listing');
     } finally {

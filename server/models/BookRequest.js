@@ -3,8 +3,7 @@ import mongoose from 'mongoose';
 const bookRequestSchema = new mongoose.Schema(
   {
     requester: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },

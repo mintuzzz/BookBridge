@@ -34,8 +34,9 @@ export default function MessagesPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConversations(data);
-        if (data.length > 0) setActiveConv(data[0]);
+        const safeConvs = Array.isArray(data) ? data : [];
+        setConversations(safeConvs);
+        if (safeConvs.length > 0) setActiveConv(safeConvs[0]);
       }
     } catch (err) {
     } finally {
@@ -50,7 +51,7 @@ export default function MessagesPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setMessages(data);
+        setMessages(Array.isArray(data) ? data : []);
       }
     } catch (err) {}
   };
@@ -117,11 +118,17 @@ export default function MessagesPage() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                    <img
-                      src={c.other_user.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
-                      alt={c.other_user.name}
-                      style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-                    />
+                    {c.other_user.avatar ? (
+                      <img
+                        src={c.other_user.avatar}
+                        alt={c.other_user.name}
+                        style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', color: 'var(--emerald-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.875rem' }}>
+                        {c.other_user.name ? c.other_user.name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                    )}
                     <div style={{ overflow: 'hidden' }}>
                       <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{c.other_user.name}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--emerald-700)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -141,11 +148,17 @@ export default function MessagesPage() {
               {/* Header */}
               {activeConv && (
                 <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--border-light)', backgroundColor: 'var(--bg-primary)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <img
-                    src={activeConv.other_user.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
-                    alt={activeConv.other_user.name}
-                    style={{ width: '32px', height: '32px', borderRadius: '50%' }}
-                  />
+                  {activeConv.other_user.avatar ? (
+                    <img
+                      src={activeConv.other_user.avatar}
+                      alt={activeConv.other_user.name}
+                      style={{ width: '32px', height: '32px', borderRadius: '50%' }}
+                    />
+                  ) : (
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', color: 'var(--emerald-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem' }}>
+                      {activeConv.other_user.name ? activeConv.other_user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                  )}
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{activeConv.other_user.name}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Context: {activeConv.book_title}</div>

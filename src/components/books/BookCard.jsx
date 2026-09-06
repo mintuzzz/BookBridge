@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
-import { Heart, Star, MapPin, Tag, Repeat, Gift, Eye } from 'lucide-react';
+import { Heart, Star, MapPin, Tag, Repeat, Gift, Eye, BookOpen } from 'lucide-react';
 
 export default function BookCard({ book }) {
   const { isAuthenticated } = useAuth();
@@ -35,9 +35,11 @@ export default function BookCard({ book }) {
     }
   };
 
-  const mainImage = book.images && book.images.length > 0
-    ? book.images[0]
-    : 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
+  const mainImage = book.images && book.images.length > 0 ? book.images[0] : null;
+
+  const transactionType = book.transaction_type || book.transactionType || 'buy';
+  const sellingPrice = book.selling_price !== undefined ? book.selling_price : (book.sellingPrice !== undefined ? book.sellingPrice : 0);
+  const originalPrice = book.original_price !== undefined ? book.original_price : (book.originalPrice !== undefined ? book.originalPrice : 0);
 
   return (
     <div
@@ -52,20 +54,27 @@ export default function BookCard({ book }) {
     >
       {/* Top Image Banner */}
       <div style={{ height: '190px', width: '100%', position: 'relative', overflow: 'hidden', backgroundColor: 'var(--bg-secondary)' }}>
-        <img
-          src={mainImage}
-          alt={book.title}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
-          className="book-card-img"
-        />
+        {mainImage ? (
+          <img
+            src={mainImage}
+            alt={book.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
+            className="book-card-img"
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', color: '#64748b' }}>
+            <BookOpen size={36} color="var(--emerald-600)" style={{ marginBottom: '0.4rem', opacity: 0.8 }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No Image Available</span>
+          </div>
+        )}
 
         {/* Transaction Type Tag */}
         <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
-          {book.transaction_type === 'donate' ? (
+          {transactionType === 'donate' ? (
             <span className="badge badge-amber" style={{ boxShadow: 'var(--shadow-sm)' }}>
               <Gift size={12} /> Free Book
             </span>
-          ) : book.transaction_type === 'exchange' ? (
+          ) : transactionType === 'exchange' ? (
             <span className="badge badge-blue" style={{ boxShadow: 'var(--shadow-sm)' }}>
               <Repeat size={12} /> Exchange
             </span>
@@ -168,25 +177,31 @@ export default function BookCard({ book }) {
               <MapPin size={13} color="var(--emerald-600)" />
               <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>{book.location}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 700, color: 'var(--amber-600)' }}>
-              <Star size={13} fill="var(--amber-500)" stroke="none" />
-              {book.seller_rating || 4.8}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600, color: 'var(--amber-600)' }}>
+              {book.seller_rating > 0 ? (
+                <>
+                  <Star size={13} fill="var(--amber-500)" stroke="none" />
+                  {book.seller_rating}
+                </>
+              ) : (
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>New Seller</span>
+              )}
             </div>
           </div>
 
           {/* Price & Action Row */}
           <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              {book.transaction_type === 'donate' ? (
+              {transactionType === 'donate' ? (
                 <span style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--amber-600)' }}>FREE</span>
-              ) : book.transaction_type === 'exchange' ? (
+              ) : transactionType === 'exchange' ? (
                 <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--blue-600)' }}>Exchange</span>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--emerald-600)' }}>₹{book.selling_price}</span>
-                  {book.original_price > book.selling_price && (
+                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--emerald-600)' }}>₹{sellingPrice}</span>
+                  {originalPrice > sellingPrice && (
                     <span style={{ fontSize: '0.75rem', textDecoration: 'line-through', color: 'var(--text-light)' }}>
-                      ₹{book.original_price}
+                      ₹{originalPrice}
                     </span>
                   )}
                 </div>

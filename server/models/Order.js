@@ -9,20 +9,17 @@ const orderSchema = new mongoose.Schema(
       index: true
     },
     buyer: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
     seller: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
     book: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Book',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
@@ -82,13 +79,11 @@ const orderSchema = new mongoose.Schema(
       default: ''
     },
     proposedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       default: null
     },
     scheduleConfirmedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       default: null
     },
     scheduledAt: {

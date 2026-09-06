@@ -3,8 +3,7 @@ import mongoose from 'mongoose';
 const bookSchema = new mongoose.Schema(
   {
     seller: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
@@ -73,7 +72,7 @@ const bookSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['available', 'reserved', 'sold', 'hidden'],
+      enum: ['available', 'reserved', 'sold', 'hidden', 'exchanged'],
       default: 'available',
       index: true
     },
@@ -102,7 +101,6 @@ const bookSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Indexes for fast searching & multi-criteria filtering
 bookSchema.index({ title: 'text', author: 'text', subject: 'text', isbn: 'text' });
 
 export default mongoose.models.Book || mongoose.model('Book', bookSchema);

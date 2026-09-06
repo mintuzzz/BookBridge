@@ -38,4 +38,7 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
-*.swp
+# Local Data & Scratch Files
+server/db/mongodb_store.json
+scratch_*.js
+

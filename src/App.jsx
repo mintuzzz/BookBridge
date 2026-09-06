@@ -20,6 +20,8 @@ import WishlistPage from './pages/WishlistPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 
+import ErrorBoundary from './components/common/ErrorBoundary';
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -29,20 +31,22 @@ export default function App() {
             <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
               <Navbar />
               <main style={{ flex: 1 }}>
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/browse" element={<BrowsePage />} />
-                  <Route path="/books/:id" element={<BookDetailPage />} />
-                  <Route path="/sell" element={<SellBookPage />} />
-                  <Route path="/exchanges" element={<ExchangePage />} />
-                  <Route path="/donations" element={<DonatePage />} />
-                  <Route path="/requests" element={<RequestsPage />} />
-                  <Route path="/orders" element={<OrdersPage />} />
-                  <Route path="/messages" element={<MessagesPage />} />
-                  <Route path="/wishlist" element={<WishlistPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/admin" element={<AdminDashboardPage />} />
-                </Routes>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/browse" element={<BrowsePage />} />
+                    <Route path="/books/:id" element={<BookDetailPage />} />
+                    <Route path="/sell" element={<SellBookPage />} />
+                    <Route path="/exchanges" element={<ExchangePage />} />
+                    <Route path="/donations" element={<DonatePage />} />
+                    <Route path="/requests" element={<RequestsPage />} />
+                    <Route path="/orders" element={<OrdersPage />} />
+                    <Route path="/messages" element={<MessagesPage />} />
+                    <Route path="/wishlist" element={<WishlistPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/admin" element={<AdminDashboardPage />} />
+                  </Routes>
+                </ErrorBoundary>
               </main>
               <Footer />
               <MobileNav />

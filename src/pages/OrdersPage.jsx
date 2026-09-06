@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { ShoppingBag, Check, X, Clock, Calendar, CheckCircle2, XCircle, MessageSquare, Send, Sparkles, Key, ShieldCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ShoppingBag, Check, X, Clock, Calendar, CheckCircle2, XCircle, MessageSquare, Send, Sparkles, Key, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { validateScheduleInput } from '../utils/scheduleValidation';
+import { safeFetchJson } from '../config/api';
 
-function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
+function OrderCard({ order, currentUserId, activeToken, onRefresh, isHighlighted }) {
+  const { showToast } = useNotification();
   const [loading, setLoading] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
@@ -15,14 +18,25 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
   const [otpSuccess, setOtpSuccess] = useState('');
 
   // Schedule State
-  const [meetingSpot, setMeetingSpot] = useState(order.meeting_spot || 'Central Library Grounds');
-  const [proposedDate, setProposedDate] = useState(order.proposed_date || 'Aug 28');
-  const [startTime, setStartTime] = useState(order.start_time || '1:00 PM');
-  const [endTime, setEndTime] = useState(order.end_time || '2:00 PM');
+  const [meetingSpot, setMeetingSpot] = useState(order.meeting_spot || '');
+  const [proposedDate, setProposedDate] = useState(order.proposed_date || '');
+  const [startTime, setStartTime] = useState(order.start_time || '');
+  const [endTime, setEndTime] = useState(order.end_time || '');
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleSuccess, setScheduleSuccess] = useState('');
 
   // Messages State
   const [messages, setMessages] = useState([]);
   const [newMessageText, setNewMessageText] = useState('');
+
+  const ordId = (order.id || order._id)?.toString();
+
+  useEffect(() => {
+    setMeetingSpot(order.meeting_spot || '');
+    setProposedDate(order.proposed_date || '');
+    setStartTime(order.start_time || '');
+    setEndTime(order.end_time || '');
+  }, [order.meeting_spot, order.proposed_date, order.start_time, order.end_time]);
 
   const isSeller = currentUserId && (order.seller_id === currentUserId.toString());
   const isBuyer = currentUserId && (order.buyer_id === currentUserId.toString());
@@ -46,13 +60,11 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch(`/api/orders/${order.id}/messages`, {
+      if (!ordId) return;
+      const data = await safeFetchJson(`/api/orders/${ordId}/messages`, {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-      }
+      setMessages(Array.isArray(data) ? data : []);
     } catch (e) {}
   };
 
@@ -60,7 +72,8 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
     e.preventDefault();
     if (!newMessageText.trim() || !activeToken) return;
     try {
-      const res = await fetch(`/api/orders/${order.id}/messages`, {
+      if (!ordId) return;
+      await safeFetchJson(`/api/orders/${ordId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,10 +81,8 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
         },
         body: JSON.stringify({ message: newMessageText })
       });
-      if (res.ok) {
-        setNewMessageText('');
-        fetchMessages();
-      }
+      setNewMessageText('');
+      fetchMessages();
     } catch (e) {}
   };
 
@@ -82,7 +93,8 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
     setOtpError('');
     setOtpSuccess('');
     try {
-      const res = await fetch(`/api/orders/${order.id}/verify-handover-otp`, {
+      if (!ordId) throw new Error('Invalid order ID');
+      const data = await safeFetchJson(`/api/orders/${ordId}/verify-handover-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,11 +102,9 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
         },
         body: JSON.stringify({ otp: inputOtp })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Verification failed');
-      setOtpSuccess(data.message);
+      setOtpSuccess(data.message || 'Verification successful!');
       setInputOtp('');
-      onRefresh();
+      if (onRefresh) onRefresh();
     } catch (e) {
       setOtpError(e.message);
     } finally {
@@ -106,14 +116,15 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
     if (!activeToken) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/accept`, {
+      if (!ordId) return;
+      const data = await safeFetchJson(`/api/orders/${ordId}/accept`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        onRefresh();
-      }
+      showToast(data.message || 'Purchase request accepted!', 'success');
+      if (onRefresh) onRefresh();
     } catch (e) {
+      showToast(e.message || 'Failed to accept request.', 'error');
     } finally {
       setLoading(false);
     }
@@ -123,14 +134,15 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
     if (!activeToken) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/reject`, {
+      if (!ordId) return;
+      const data = await safeFetchJson(`/api/orders/${ordId}/reject`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        onRefresh();
-      }
+      showToast(data.message || 'Purchase request declined.', 'info');
+      if (onRefresh) onRefresh();
     } catch (e) {
+      showToast(e.message || 'Failed to decline request.', 'error');
     } finally {
       setLoading(false);
     }
@@ -139,9 +151,32 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
   const handleProposeScheduleSubmit = async (e) => {
     e.preventDefault();
     if (!activeToken) return;
+
+    if (!ordId) {
+      showToast('Invalid order ID.', 'error');
+      return;
+    }
+
+    // Validate form fields
+    const validationError = validateScheduleInput({
+      meetingSpot,
+      proposedDate,
+      startTime,
+      endTime
+    });
+
+    if (validationError) {
+      setScheduleError(validationError);
+      showToast(validationError, 'error', 'Validation Error');
+      return;
+    }
+
     setLoading(true);
+    setScheduleError('');
+    setScheduleSuccess('');
+
     try {
-      const res = await fetch(`/api/orders/${order.id}/propose-schedule`, {
+      const data = await safeFetchJson(`/api/orders/${ordId}/propose-schedule`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -154,11 +189,14 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
           end_time: endTime
         })
       });
-      if (res.ok) {
-        setShowScheduleForm(false);
-        onRefresh();
-      }
-    } catch (e) {
+
+      setScheduleSuccess('Schedule Proposed ✓');
+      showToast(data.message || 'Meeting schedule proposed successfully.', 'success', 'Schedule Proposed');
+      setShowScheduleForm(false);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setScheduleError(err.message || 'Unable to propose the meeting schedule. Please try again.');
+      showToast(err.message || 'Unable to propose the meeting schedule. Please try again.', 'error', 'Schedule Failed');
     } finally {
       setLoading(false);
     }
@@ -166,33 +204,35 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
 
   const handleConfirmScheduleClick = async () => {
     if (!activeToken) return;
+    if (!ordId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/confirm-schedule`, {
+      const data = await safeFetchJson(`/api/orders/${ordId}/confirm-schedule`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        onRefresh();
-      }
+      showToast(data.message || 'Handover meeting schedule confirmed successfully!', 'success');
+      if (onRefresh) onRefresh();
     } catch (e) {
+      showToast(e.message || 'Failed to confirm schedule.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const mainImage = order.images && order.images.length > 0
-    ? order.images[0]
-    : 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
+  const mainImage = order.images && order.images.length > 0 ? order.images[0] : null;
 
   return (
     <div
+      id={`order_${ordId}`}
       className="card"
       style={{
         padding: '1.25rem',
         borderLeft: `5px solid ${isCompleted ? '#10b981' : isHandoverPending || isScheduled ? '#2563eb' : isAccepted ? '#8b5cf6' : isRejected ? '#ef4444' : '#f59e0b'}`,
-        backgroundColor: 'white',
-        marginBottom: '1rem'
+        backgroundColor: isHighlighted ? '#f0f9ff' : 'white',
+        border: isHighlighted ? '2px solid #2563eb' : undefined,
+        marginBottom: '1rem',
+        transition: 'all 0.3s ease'
       }}
     >
       {/* Header */}
@@ -210,9 +250,14 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
               <Clock size={12} /> Pending Response
             </span>
           )}
-          {isAccepted && (
+          {isAccepted && !order.proposed_date && (
             <span className="badge badge-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <Calendar size={12} /> Request Accepted (Arrange Handover)
+            </span>
+          )}
+          {isAccepted && order.proposed_date && !isScheduled && !isHandoverPending && (
+            <span className="badge badge-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={12} /> Proposed Meeting ({selfProposed ? 'Waiting for confirmation' : 'Requires Action'})
             </span>
           )}
           {isScheduled && (
@@ -232,38 +277,40 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
           )}
           {isRejected && (
             <span className="badge badge-rose" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <XCircle size={12} /> Request Declined
+              <XCircle size={12} /> Declined
             </span>
           )}
         </div>
       </div>
 
-      {/* Book & User Info Card Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr auto', gap: '1rem', alignItems: 'center', marginBottom: '1.25rem' }}>
-        <img
-          src={mainImage}
-          alt={order.book_title}
-          style={{ width: '80px', height: '95px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-light)' }}
-        />
+      {/* Book & Order Details Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '1rem', alignItems: 'center', marginBottom: '1.25rem' }}>
+        {/* Image Preview / Placeholder */}
+        {mainImage ? (
+          <img
+            src={mainImage}
+            alt={order.book_title}
+            style={{ width: '64px', height: '80px', objectFit: 'cover', borderRadius: '8px' }}
+          />
+        ) : (
+          <div style={{ width: '64px', height: '80px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            <ShoppingBag size={20} />
+            <span style={{ fontSize: '0.65rem', marginTop: '4px' }}>No Image</span>
+          </div>
+        )}
 
         <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.2rem' }}>
-            {order.book_title}
-          </h3>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-            by {order.book_author} · {order.book_condition} Condition
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-dark)' }}>
-            <strong>{isSeller ? `Buyer: ${order.buyer_name}` : `Seller: ${order.seller_name}`}</strong>
+          <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-dark)' }}>{order.book_title}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            {isBuyer ? `Seller: ${order.seller_name}` : `Buyer: ${order.buyer_name}`}
           </div>
         </div>
 
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Amount</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--emerald-600)' }}>
-            {order.total_amount === 0 ? 'FREE' : `₹${order.total_amount}`}
+          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--emerald-600)' }}>
+            ₹{order.total_amount}
           </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>Pay via {order.payment_method?.toUpperCase()}</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>Pay via {(order.payment_method || 'Cash').toUpperCase()}</div>
         </div>
       </div>
 
@@ -286,12 +333,22 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
             <Calendar size={16} color="var(--blue-600)" /> Arrange Handover & Meeting
           </div>
 
-          {/* Current Schedule Details */}
+          {/* Current Saved Proposed Schedule Details */}
           {order.proposed_date && (
-            <div style={{ fontSize: '0.825rem', color: 'var(--text-dark)', marginBottom: '0.75rem', backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div><strong>Meeting Spot:</strong> {order.meeting_spot}</div>
-              <div><strong>Proposed Date:</strong> {order.proposed_date}</div>
-              <div><strong>Time Window:</strong> {order.start_time} – {order.end_time}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-dark)', marginBottom: '0.75rem', backgroundColor: 'white', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.35rem', color: 'var(--blue-700)' }}>Proposed Meeting</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                📍 <strong>Spot:</strong> {order.meeting_spot}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                📅 <strong>Date:</strong> {order.proposed_date}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                🕐 <strong>Time Window:</strong> {order.start_time} – {order.end_time}
+              </div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isScheduled || isHandoverPending ? 'var(--emerald-600)' : 'var(--amber-600)' }}>
+                Status: {isScheduled || isHandoverPending ? 'Confirmed ✓' : 'Pending Confirmation'}
+              </div>
             </div>
           )}
 
@@ -324,26 +381,36 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
           {/* Schedule Form */}
           {(showScheduleForm || (!order.proposed_date && showScheduleForm)) && (
             <form onSubmit={handleProposeScheduleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem', backgroundColor: 'white', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+              {scheduleError && (
+                <div style={{ fontSize: '0.8rem', color: '#dc2626', backgroundColor: '#fef2f2', padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <AlertCircle size={14} /> {scheduleError}
+                </div>
+              )}
+              {scheduleSuccess && (
+                <div style={{ fontSize: '0.8rem', color: '#16a34a', backgroundColor: '#f0fdf4', padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid #86efac' }}>
+                  {scheduleSuccess}
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Meeting Spot</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Meeting Spot *</label>
                   <input
                     type="text"
                     required
                     value={meetingSpot}
                     onChange={(e) => setMeetingSpot(e.target.value)}
-                    placeholder="Central Library Grounds"
+                    placeholder="College Library Grounds"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Date</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Date *</label>
                   <input
-                    type="text"
+                    type="date"
                     required
                     value={proposedDate}
                     onChange={(e) => setProposedDate(e.target.value)}
-                    placeholder="e.g. Aug 28"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
@@ -351,24 +418,22 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Start Time</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Start Time *</label>
                   <input
-                    type="text"
+                    type="time"
                     required
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    placeholder="1:00 PM"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>End Time</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>End Time *</label>
                   <input
-                    type="text"
+                    type="time"
                     required
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    placeholder="2:00 PM"
                     style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}
                   />
                 </div>
@@ -392,7 +457,7 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
           {otpError && <div style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem' }}>⚠️ {otpError}</div>}
           {otpSuccess && <div style={{ color: '#10b981', fontSize: '0.8rem', marginBottom: '0.5rem' }}>✅ {otpSuccess}</div>}
 
-          {/* SELLER CODE DISPLAY (AUTOMATICALLY POPULATED) */}
+          {/* SENDER CODE DISPLAY (AUTOMATICALLY POPULATED) */}
           {isSeller && order.handover_code && (
             <div style={{ backgroundColor: 'white', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #93c5fd', marginBottom: '0.75rem' }}>
               <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700 }}>
@@ -501,12 +566,15 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh }) {
 
 export default function OrdersPage() {
   const { user, isAuthenticated } = useAuth();
-  const { showToast } = useNotification();
+  const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const activeToken = localStorage.getItem('bb_token');
   const currentUserId = user?.id || user?._id;
+
+  const queryParams = new URLSearchParams(location.search);
+  const targetOrderId = queryParams.get('orderId') || queryParams.get('id');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -524,18 +592,26 @@ export default function OrdersPage() {
     return () => {
       window.removeEventListener('bb:order_updated', handleLiveOrderUpdate);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, location]);
+
+  useEffect(() => {
+    if (targetOrderId && orders.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`order_${targetOrderId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [targetOrderId, orders]);
 
   const fetchMyOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/orders/my-orders', {
+      const data = await safeFetchJson('/api/orders/my-orders', {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
-      }
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Fetch orders error:', err);
     } finally {
@@ -573,15 +649,19 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {orders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                currentUserId={currentUserId}
-                activeToken={activeToken}
-                onRefresh={fetchMyOrders}
-              />
-            ))}
+            {orders.map((order) => {
+              const ordId = (order.id || order._id)?.toString();
+              return (
+                <OrderCard
+                  key={ordId}
+                  order={order}
+                  currentUserId={currentUserId}
+                  activeToken={activeToken}
+                  onRefresh={fetchMyOrders}
+                  isHighlighted={targetOrderId === ordId}
+                />
+              );
+            })}
           </div>
         )}
       </div>

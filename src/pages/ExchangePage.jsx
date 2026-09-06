@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import ExchangeMatchCard from '../components/exchange/ExchangeMatchCard';
 import ExchangeProposalCard from '../components/exchange/ExchangeProposalCard';
-import { Repeat, Sparkles, PlusCircle, RefreshCw, Inbox } from 'lucide-react';
+import { Repeat, Sparkles, PlusCircle, RefreshCw, Inbox, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function ExchangePage() {
@@ -12,6 +12,7 @@ export default function ExchangePage() {
   const [matches, setMatches] = useState([]);
   const [myExchanges, setMyExchanges] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [matchError, setMatchError] = useState(null);
 
   const activeToken = token || localStorage.getItem('bb_token');
   const currentUserId = user?.id || user?._id;
@@ -24,9 +25,9 @@ export default function ExchangePage() {
       setMatches([]);
       setMyExchanges([]);
       setLoading(false);
+      setMatchError(null);
     }
 
-    // REAL-TIME EVENT LISTENER
     const handleLiveExchangeUpdate = () => {
       console.log('⚡ Real-Time Exchange Event Triggered! Auto-refreshing exchanges list...');
       fetchMyExchanges();
@@ -42,16 +43,20 @@ export default function ExchangePage() {
   const fetchMatches = async () => {
     if (!activeToken) return;
     setLoading(true);
+    setMatchError(null);
     try {
       const res = await fetch('/api/exchanges/matches', {
         headers: { Authorization: `Bearer ${activeToken}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setMatches(data);
+        setMatches(Array.isArray(data) ? data : []);
+      } else {
+        setMatchError('Unable to load exchange matches. Please try again.');
       }
     } catch (err) {
       console.error('Fetch exchange matches error:', err);
+      setMatchError('Unable to load exchange matches. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -65,7 +70,7 @@ export default function ExchangePage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setMyExchanges(data);
+        setMyExchanges(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Fetch my exchanges error:', err);
@@ -192,6 +197,14 @@ export default function ExchangePage() {
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: '3rem 0' }}>Loading exchange matches...</div>
+          ) : matchError ? (
+            <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', borderColor: '#fca5a5', backgroundColor: '#fef2f2' }}>
+              <AlertTriangle size={40} color="var(--rose-500)" style={{ margin: '0 auto 1rem' }} />
+              <h3 style={{ color: '#991b1b' }}>{matchError}</h3>
+              <button onClick={fetchMatches} className="btn btn-rose" style={{ marginTop: '1.25rem' }}>
+                Try Again
+              </button>
+            </div>
           ) : matches.length === 0 ? (
             <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
               <h3>No reciprocal matches found yet</h3>

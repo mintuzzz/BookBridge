@@ -92,6 +92,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'BookBridge Express MongoDB API', version: '2.0.0' });
 });
 
+// Catch-all 404 handler for unmatched API routes - ALWAYS return JSON, never HTML
+app.use('/api/*', (req, res) => {
+  return res.status(404).json({
+    success: false,
+    message: `API endpoint not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+// Global API Error Handler - ALWAYS return JSON
+app.use((err, req, res, next) => {
+  console.error('Global API Error:', err);
+  return res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error'
+  });
+});
+
 // Initialize DB and start HTTP + Socket.IO server cleanly
 const startServer = async () => {
   try {

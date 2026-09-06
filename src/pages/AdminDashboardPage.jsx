@@ -247,7 +247,9 @@ export default function AdminDashboardPage() {
                       <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-muted)' }}>{b.department}</span>
                     </td>
                     <td style={{ padding: '0.75rem' }}>{b.seller_name}</td>
-                    <td style={{ padding: '0.75rem' }}>{b.transaction_type.toUpperCase()} · ₹{b.selling_price}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {(b.transaction_type || b.transactionType || 'BUY').toUpperCase()} · { (b.transaction_type || b.transactionType) === 'donate' ? 'FREE' : (b.transaction_type || b.transactionType) === 'exchange' ? 'Exchange' : `₹${b.selling_price ?? b.sellingPrice ?? 0}` }
+                    </td>
                     <td style={{ padding: '0.75rem' }}>
                       <span className={`badge ${b.status === 'available' ? 'badge-emerald' : 'badge-amber'}`}>{b.status}</span>
                     </td>

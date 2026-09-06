@@ -41,7 +41,7 @@ export default function BrowsePage() {
 
       const res = await fetch(`/api/books?${queryParams.toString()}`);
       const data = await res.json();
-      setBooks(data);
+      setBooks(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Fetch browse books error:', err);
     } finally {
@@ -126,13 +126,18 @@ export default function BrowsePage() {
             ) : books.length === 0 ? (
               <div className="card" style={{ padding: '3.5rem 1.5rem', textAlign: 'center' }}>
                 <BookOpen size={48} color="var(--emerald-600)" style={{ margin: '0 auto 1rem' }} />
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>📚 No books found</h3>
+                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>📚 No books available yet</h3>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-                  Try changing your search term or clearing applied filters.
+                  Be the first student to list a book on campus.
                 </p>
-                <button onClick={handleResetFilters} className="btn btn-emerald btn-sm">
-                  Reset All Filters
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                  <button onClick={handleResetFilters} className="btn btn-outline btn-sm">
+                    Reset All Filters
+                  </button>
+                  <Link to="/sell" className="btn btn-emerald btn-sm">
+                    List a Book
+                  </Link>
+                </div>
               </div>
             ) : (
               <div>

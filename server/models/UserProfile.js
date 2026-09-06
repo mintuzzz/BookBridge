@@ -33,16 +33,16 @@ const userProfileSchema = new mongoose.Schema(
     },
     avatarUrl: {
       type: String,
-      default: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+      default: ''
     },
     ecoPoints: {
       type: Number,
-      default: 50
+      default: 0
     },
     rating: {
       type: Number,
-      default: 4.8,
-      min: 1.0,
+      default: 0,
+      min: 0.0,
       max: 5.0
     }
   },

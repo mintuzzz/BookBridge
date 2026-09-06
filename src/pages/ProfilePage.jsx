@@ -70,11 +70,17 @@ export default function ProfilePage() {
         {/* Profile Banner Card */}
         <div className="card" style={{ padding: '2rem', marginBottom: '2rem', position: 'relative' }}>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <img
-              src={user.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
-              alt={user.full_name}
-              style={{ width: '90px', height: '90px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--emerald-500)' }}
-            />
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.full_name}
+                style={{ width: '90px', height: '90px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--emerald-500)' }}
+              />
+            ) : (
+              <div style={{ width: '90px', height: '90px', borderRadius: '50%', backgroundColor: 'var(--emerald-100)', color: 'var(--emerald-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '2rem', border: '3px solid var(--emerald-500)' }}>
+                {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{user.full_name}</h1>
@@ -85,13 +91,17 @@ export default function ProfilePage() {
               </p>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                 <span className="badge badge-amber" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
-                  <Star size={14} fill="var(--amber-500)" stroke="none" /> {user.rating || 4.8} Rating
+                  {user.rating > 0 ? (
+                    <><Star size={14} fill="var(--amber-500)" stroke="none" /> {user.rating} Rating</>
+                  ) : (
+                    'No reviews yet'
+                  )}
                 </span>
                 <span className="badge badge-emerald" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
-                  <Leaf size={14} /> 🌱 {user.eco_points || 50} Eco Points
+                  <Leaf size={14} /> 🌱 {user.eco_points || 0} Eco Points
                 </span>
                 <span className="badge badge-blue" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
-                  <Award size={14} /> Eco Champion Level 2
+                  <Award size={14} /> Eco Level {Math.floor((user.eco_points || 0) / 100) + 1}
                 </span>
               </div>
             </div>
@@ -169,19 +179,19 @@ export default function ProfilePage() {
 
           <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
             <Repeat size={28} color="var(--blue-600)" style={{ margin: '0 auto 0.4rem' }} />
-            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>4</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{myListings.filter((b) => (b.transaction_type || b.transactionType) === 'exchange').length}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Swaps & Exchanges</div>
           </div>
 
           <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
             <Gift size={28} color="var(--amber-500)" style={{ margin: '0 auto 0.4rem' }} />
-            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>3</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{myListings.filter((b) => (b.transaction_type || b.transactionType) === 'donate').length}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Free Donations</div>
           </div>
 
           <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
             <Leaf size={28} color="var(--emerald-600)" style={{ margin: '0 auto 0.4rem' }} />
-            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{user.eco_points}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{user.eco_points || 0}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Eco Points</div>
           </div>
         </div>
@@ -198,7 +208,9 @@ export default function ProfilePage() {
               {myListings.map((b) => (
                 <div key={b.id} className="card" style={{ padding: '1rem' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{b.title}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{b.transaction_type.toUpperCase()} · ₹{b.selling_price}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {(b.transaction_type || b.transactionType || 'BUY').toUpperCase()} · { (b.transaction_type || b.transactionType) === 'donate' ? 'FREE' : (b.transaction_type || b.transactionType) === 'exchange' ? 'Exchange' : `₹${b.selling_price ?? b.sellingPrice ?? 0}` }
+                  </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--emerald-600)', fontWeight: 600, marginTop: '4px' }}>Status: {b.status}</div>
                 </div>
               ))}

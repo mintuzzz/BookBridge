@@ -37,7 +37,8 @@ export default function Navbar() {
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const notifList = Array.isArray(notifications) ? notifications : [];
+  const unreadCount = notifList.filter((n) => !n?.is_read).length;
 
   return (
     <>
@@ -190,7 +191,7 @@ export default function Navbar() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Notifications</span>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--emerald-600)', fontWeight: 600 }}>{notifications.length} recent</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--emerald-600)', fontWeight: 600 }}>{notifList.length} recent</span>
                           {unreadCount > 0 && (
                             <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', fontSize: '0.7rem', color: 'var(--blue-600)', cursor: 'pointer', fontWeight: 600 }}>
                               Mark all read
@@ -200,10 +201,10 @@ export default function Navbar() {
                       </div>
 
                       <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {notifications.length === 0 ? (
+                        {notifList.length === 0 ? (
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>No notifications yet.</div>
                         ) : (
-                          notifications.map((n) => {
+                          notifList.map((n) => {
                             const notifId = (n.id || n._id || '').toString();
                             return (
                               <Link

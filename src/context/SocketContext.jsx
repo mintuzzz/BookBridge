@@ -25,11 +25,12 @@ export const SocketProvider = ({ children }) => {
       });
       if (res.ok) {
         const data = await res.json();
+        const safeData = Array.isArray(data) ? data : [];
         setNotifications((prev) => {
-          // Merge & deduplicate by ID so state never overwrites live socket items
+          const prevArr = Array.isArray(prev) ? prev : [];
           const map = new Map();
-          // Keep live/newer items first
-          [...data, ...prev].forEach((item) => {
+          [...safeData, ...prevArr].forEach((item) => {
+            if (!item) return;
             const itemId = (item.id || item._id || '').toString();
             if (itemId && !map.has(itemId)) {
               map.set(itemId, item);

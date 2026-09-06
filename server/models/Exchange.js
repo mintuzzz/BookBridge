@@ -3,25 +3,21 @@ import mongoose from 'mongoose';
 const exchangeSchema = new mongoose.Schema(
   {
     requester: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
     owner: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true
     },
     offeredBook: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Book',
+      type: mongoose.Schema.Types.Mixed,
       required: true
     },
     requestedBook: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Book',
+      type: mongoose.Schema.Types.Mixed,
       required: true
     },
     matchLevel: {
@@ -56,13 +52,11 @@ const exchangeSchema = new mongoose.Schema(
       default: ''
     },
     proposedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       default: null
     },
     scheduleConfirmedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       default: null
     },
     scheduledAt: {

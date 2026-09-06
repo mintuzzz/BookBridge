@@ -25,7 +25,7 @@ export default function WishlistPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setWishlist(data);
+        setWishlist(Array.isArray(data) ? data : []);
       }
     } catch (err) {
     } finally {
