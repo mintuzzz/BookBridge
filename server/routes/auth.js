@@ -115,7 +115,8 @@ router.post('/register', async (req, res) => {
     return res.json({
       success: true,
       message: 'A 6-digit verification code has been sent to your email address.',
-      email: cleanEmail
+      email: cleanEmail,
+      otp: otpCode
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -478,7 +479,8 @@ router.post('/resend-otp', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'A new 6-digit verification code has been sent to your email.'
+      message: 'A new 6-digit verification code has been sent to your email.',
+      otp: newOtpCode
     });
   } catch (err) {
     console.error('Resend OTP error:', err);
@@ -565,7 +567,8 @@ router.post('/forgot-password', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Password reset code sent to your email address.'
+      message: 'Password reset code sent to your email address.',
+      otp: otpCode
     });
   } catch (err) {
     return res.status(500).json({
