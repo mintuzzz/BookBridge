@@ -122,7 +122,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
     }
   };
 
-  // Submit Registration Step 1 (Generates & Emails Real OTP via Gmail SMTP)
+  // Submit Registration (Bypasses OTP, logs user in directly)
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -143,16 +143,14 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Registration Error');
 
-      if (data.email) {
-        setEmail(data.email);
+      if (data.token && data.user) {
+        login(data.token, data.user);
+        showToast(`Account created successfully! Welcome to BookBridge, ${data.user.full_name}!`, 'success', '🎉 Welcome');
+        onClose();
+      } else {
+        showToast(data.message || 'Account created successfully! Please log in.', 'success');
+        setMode('login');
       }
-
-      setOtpPurpose('REGISTER');
-      setOtpDigits(['', '', '', '', '', '']);
-      setResendCooldown(60);
-      setCanResend(false);
-      setMode('otp');
-      showToast(`Verification code sent to ${data.email || email}. Check your inbox!`, 'info', 'Verify Email');
     } catch (err) {
       showToast(err.message, 'error', 'Registration Error');
     } finally {
@@ -455,7 +453,7 @@ export default function AuthModal({ initialMode = 'login', onClose }) {
             </div>
 
             <button type="submit" disabled={loading} className="btn btn-emerald btn-lg" style={{ width: '100%', marginTop: '0.4rem' }}>
-              {loading ? 'Sending Verification Email...' : 'Register & Send Email OTP'}
+              {loading ? 'Creating Account...' : 'Create Account'}
             </button>
 
             <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>

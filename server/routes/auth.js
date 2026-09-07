@@ -50,72 +50,120 @@ router.post('/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Cryptographically secure 6-digit OTP generation
-    const otpCode = crypto.randomInt(100000, 1000000).toString();
-    const otpHash = await bcrypt.hash(otpCode, 10);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
-
-    const tempUserData = {
-      fullName: full_name.trim(),
-      email: cleanEmail,
-      phone: phone.trim(),
-      passwordHash,
-      institution: (institution || 'State University of Technology').trim(),
-      department: (department || 'Computer Science').trim(),
-      semester: parseInt(semester, 10) || 1
-    };
+    let userPayload = null;
+    let token = null;
 
     if (isMongoConnected) {
-      // Invalidate existing unverified registration OTPs for this email
-      await OtpVerification.deleteMany({ email: cleanEmail, purpose: 'REGISTER', verified: false });
-
-      await OtpVerification.create({
+      const newUser = await User.create({
         email: cleanEmail,
-        otpHash,
-        purpose: 'REGISTER',
-        expiresAt,
-        attempts: 0,
-        verified: false,
-        tempUserData
+        phone: phone.trim(),
+        passwordHash,
+        role: 'STUDENT',
+        status: 'active',
+        isEmailVerified: true
       });
-      console.log(`💾 [OTP Save Success] Saved OtpVerification record in MongoDB for: ${cleanEmail}`);
+
+      const newProfile = await UserProfile.create({
+        user: newUser._id,
+        fullName: full_name.trim(),
+        institution: (institution || 'State University of Technology').trim(),
+        department: (department || 'Computer Science').trim(),
+        semester: parseInt(semester, 10) || 1,
+        avatarUrl: '',
+        ecoPoints: 0,
+        rating: 0
+      });
+
+      await Session.create({
+        user: newUser._id,
+        token: 'active_session',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      });
+
+      await EcoPoint.create({
+        user: newUser._id,
+        points: 50,
+        action: 'register',
+        description: 'Welcome bonus for joining BookBridge!'
+      });
+
+      await Notification.create({
+        user: newUser._id,
+        title: '🎉 Welcome to BookBridge!',
+        message: 'Your student account has been created. You earned 50 Eco Points!',
+        type: 'eco'
+      });
+
+      userPayload = {
+        id: newUser._id.toString(),
+        full_name: newProfile.fullName,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: 'student',
+        institution: newProfile.institution,
+        department: newProfile.department,
+        semester: newProfile.semester,
+        avatar_url: newProfile.avatarUrl || '',
+        eco_points: newProfile.ecoPoints || 0,
+        rating: newProfile.rating || 0
+      };
+
+      token = generateToken(newUser, newProfile);
     } else {
       const store = getStore();
-      store.otpverifications = store.otpverifications.filter(
-        (o) => !(o.email === cleanEmail && o.purpose === 'REGISTER' && !o.verified)
-      );
-      store.otpverifications.push({
-        id: `otp_${Date.now()}`,
-        _id: `otp_${Date.now()}`,
+      const userId = `user_${Date.now()}`;
+      const newUser = {
+        id: userId,
+        _id: userId,
         email: cleanEmail,
-        otpHash,
-        purpose: 'REGISTER',
-        expiresAt: expiresAt.toISOString(),
-        attempts: 0,
-        verified: false,
-        tempUserData,
-        createdAt: new Date().toISOString()
-      });
+        phone: phone.trim(),
+        passwordHash,
+        role: 'STUDENT',
+        status: 'active',
+        isEmailVerified: true
+      };
+
+      const newProfile = {
+        id: `prof_${Date.now()}`,
+        _id: `prof_${Date.now()}`,
+        user: userId,
+        fullName: full_name.trim(),
+        institution: (institution || 'State University of Technology').trim(),
+        department: (department || 'Computer Science').trim(),
+        semester: parseInt(semester, 10) || 1,
+        avatarUrl: '',
+        ecoPoints: 0,
+        rating: 0
+      };
+
+      store.users.push(newUser);
+      store.userprofiles.push(newProfile);
       saveStore();
+
+      userPayload = {
+        id: userId,
+        full_name: newProfile.fullName,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: 'student',
+        institution: newProfile.institution,
+        department: newProfile.department,
+        semester: newProfile.semester,
+        avatar_url: newProfile.avatarUrl || '',
+        eco_points: newProfile.ecoPoints || 0,
+        rating: newProfile.rating || 0
+      };
+
+      token = generateToken(newUser, newProfile);
     }
 
-    // Dispatch real email via Resend / Nodemailer (DO NOT return OTP in response)
-    try {
-      await sendOtpEmail({
-        toEmail: cleanEmail,
-        studentName: full_name,
-        otpCode,
-        purpose: 'REGISTER'
-      });
-      console.log(`📧 [Email Provider Success] OTP Email dispatched to: ${cleanEmail}`);
-    } catch (emailErr) {
-      console.error(`⚠️ [Email Provider Fallback] Could not send email (${emailErr.message}). Dispatched code to server log: ${otpCode}`);
-    }
+    console.log(`✅ [Direct Register Success] Student account created directly for: ${cleanEmail}`);
 
     return res.json({
       success: true,
-      message: 'A 6-digit verification code has been sent to your email address.',
-      email: cleanEmail
+      message: 'Account created successfully! Welcome to BookBridge.',
+      token,
+      user: userPayload
     });
   } catch (err) {
     console.error('Register error:', err);
