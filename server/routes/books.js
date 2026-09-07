@@ -2,7 +2,9 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import mongoose from 'mongoose';
 import Book from '../models/Book.js';
+import User from '../models/User.js';
 import UserProfile from '../models/UserProfile.js';
 import EcoPoint from '../models/EcoPoint.js';
 import Notification from '../models/Notification.js';
@@ -35,6 +37,8 @@ const cleanupLocalImages = (imagesArray) => {
 
 // Helper to format book objects consistently
 const formatBookDoc = (b, profile = {}, user = {}) => {
+  const p = profile || {};
+  const u = user || {};
   const origPrice = b.originalPrice !== undefined ? b.originalPrice : (b.original_price !== undefined ? b.original_price : 0);
   const sellPrice = b.sellingPrice !== undefined ? b.sellingPrice : (b.selling_price !== undefined ? b.selling_price : 0);
   const transType = b.transactionType || b.transaction_type || 'buy';
@@ -44,13 +48,13 @@ const formatBookDoc = (b, profile = {}, user = {}) => {
     id: (b._id || b.id).toString(),
     _id: (b._id || b.id).toString(),
     seller_id: sellerIdStr,
-    seller_name: profile.fullName || 'Verified Student',
-    seller_phone: profile.phone || user.phone || b.seller?.phone || '',
-    seller_email: user.email || b.seller?.email || '',
-    seller_rating: profile.rating || 0,
-    seller_avatar: profile.avatarUrl || '',
-    seller_institution: profile.institution || 'State University',
-    seller_dept: profile.department || 'Computer Science',
+    seller_name: p.fullName || 'Verified Student',
+    seller_phone: p.phone || u.phone || b.seller?.phone || '',
+    seller_email: u.email || b.seller?.email || '',
+    seller_rating: p.rating || 0,
+    seller_avatar: p.avatarUrl || '',
+    seller_institution: p.institution || 'State University',
+    seller_dept: p.department || 'Computer Science',
     title: b.title,
     author: b.author,
     edition: b.edition || 'Standard Edition',
@@ -222,18 +226,40 @@ router.get('/:id', async (req, res) => {
     const bookId = req.params.id;
 
     if (isMongoConnected) {
-      const book = await Book.findByIdAndUpdate(
-        bookId,
-        { $inc: { viewCount: 1 } },
-        { new: true }
-      )
-        .populate('seller', 'email phone role')
-        .lean();
+      let book = null;
+      if (mongoose.Types.ObjectId.isValid(bookId)) {
+        book = await Book.findByIdAndUpdate(
+          bookId,
+          { $inc: { viewCount: 1 } },
+          { new: true }
+        )
+          .populate('seller', 'email phone role')
+          .lean();
+      }
+
+      if (!book) {
+        book = await Book.findOneAndUpdate(
+          { id: bookId },
+          { $inc: { viewCount: 1 } },
+          { new: true }
+        )
+          .populate('seller', 'email phone role')
+          .lean();
+      }
 
       if (!book) return res.status(404).json({ error: 'Book listing not found.' });
 
-      const profile = await UserProfile.findOne({ user: book.seller._id }).lean();
-      return res.json(formatBookDoc(book, profile, book.seller || {}));
+      const sellerId = (book.seller?._id || book.seller || '').toString();
+      let userObj = (typeof book.seller === 'object' && book.seller !== null && book.seller.email) ? book.seller : {};
+      if (!userObj.email && sellerId && mongoose.Types.ObjectId.isValid(sellerId)) {
+        userObj = (await User.findById(sellerId).select('email phone role').lean()) || {};
+      }
+
+      const profile = (sellerId && mongoose.Types.ObjectId.isValid(sellerId))
+        ? await UserProfile.findOne({ user: sellerId }).lean()
+        : null;
+
+      return res.json(formatBookDoc(book, profile || {}, userObj));
     } else {
       const store = getStore();
       const book = store.books.find((b) => (b._id || b.id).toString() === bookId);
