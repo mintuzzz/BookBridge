@@ -217,13 +217,29 @@ export default function ExchangePage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {matches.map((match) => (
-                <ExchangeMatchCard
-                  key={match.id}
-                  match={match}
-                  onSendProposal={handleSendProposal}
-                />
-              ))}
+              {matches.map((match) => {
+                const existingProposal = myExchanges.find((p) => {
+                  const offId = (p.offered_book?.id || p.offered_book?._id || '').toString();
+                  const reqId = (p.requested_book?.id || p.requested_book?._id || '').toString();
+                  const myId = (match.my_book?.id || match.my_book?._id || '').toString();
+                  const targetId = (match.target_book?.id || match.target_book?._id || '').toString();
+
+                  const isMatchPair = (offId === myId && reqId === targetId) || (offId === targetId && reqId === myId);
+                  return isMatchPair && ['pending', 'accepted', 'scheduled', 'handover_pending', 'completed'].includes(p.status);
+                });
+
+                return (
+                  <ExchangeMatchCard
+                    key={match.id}
+                    match={match}
+                    existingProposal={existingProposal}
+                    currentUserId={currentUserId}
+                    onSendProposal={handleSendProposal}
+                    onAcceptProposal={handleAcceptProposal}
+                    onRejectProposal={handleRejectProposal}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

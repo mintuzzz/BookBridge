@@ -386,19 +386,22 @@ router.get('/my-exchanges', authenticateToken, async (req, res) => {
       const exchanges = await Exchange.find({
         $or: [{ requester: req.user.id }, { owner: req.user.id }]
       })
-        .populate('requester', 'email phone role')
-        .populate('owner', 'email phone role')
-        .populate('offeredBook')
-        .populate('requestedBook')
         .sort({ createdAt: -1 })
         .lean();
 
-      const requesterIds = exchanges.map((e) => e.requester?._id || e.requester);
-      const ownerIds = exchanges.map((e) => e.owner?._id || e.owner);
-      const allUserIds = [...new Set([...requesterIds, ...ownerIds].map((id) => id?.toString()).filter(Boolean))];
+      const requesterIds = exchanges.map((e) => (e.requester?._id || e.requester)?.toString()).filter(Boolean);
+      const ownerIds = exchanges.map((e) => (e.owner?._id || e.owner)?.toString()).filter(Boolean);
+      const allUserIds = [...new Set([...requesterIds, ...ownerIds])];
 
       const profiles = await UserProfile.find({ user: { $in: allUserIds } }).lean();
       const profileMap = new Map(profiles.map((p) => [p.user.toString(), p]));
+
+      const offeredIds = exchanges.map((e) => (e.offeredBook?._id || e.offeredBook)?.toString()).filter(Boolean);
+      const requestedIds = exchanges.map((e) => (e.requestedBook?._id || e.requestedBook)?.toString()).filter(Boolean);
+      const allBookIds = [...new Set([...offeredIds, ...requestedIds])];
+
+      const books = await Book.find({ _id: { $in: allBookIds } }).lean();
+      const bookMap = new Map(books.map((b) => [(b._id || b.id).toString(), b]));
 
       const activeOtps = await HandoverOtp.find({
         transactionId: { $in: exchanges.map((e) => e._id.toString()) },
@@ -414,8 +417,8 @@ router.get('/my-exchanges', authenticateToken, async (req, res) => {
       }).sort({ createdAt: -1 }).lean();
 
       const formattedExchanges = exchanges.map((e) => {
-        const reqIdStr = (e.requester?._id || e.requester).toString();
-        const ownerIdStr = (e.owner?._id || e.owner).toString();
+        const reqIdStr = (e.requester?._id || e.requester || '').toString();
+        const ownerIdStr = (e.owner?._id || e.owner || '').toString();
         const reqProfile = profileMap.get(reqIdStr) || {};
         const ownerProfile = profileMap.get(ownerIdStr) || {};
         const activeOtp = otpMap.get(e._id.toString());
@@ -429,28 +432,49 @@ router.get('/my-exchanges', authenticateToken, async (req, res) => {
           }
         }
 
+        const offBookDoc = bookMap.get((e.offeredBook?._id || e.offeredBook || '').toString());
+        const reqBookDoc = bookMap.get((e.requestedBook?._id || e.requestedBook || '').toString());
+
+        const offeredBookObj = offBookDoc ? {
+          id: (offBookDoc._id || offBookDoc.id).toString(),
+          title: offBookDoc.title,
+          author: offBookDoc.author,
+          department: offBookDoc.department,
+          semester: offBookDoc.semester,
+          location: offBookDoc.location
+        } : (typeof e.offeredBook === 'object' && e.offeredBook ? {
+          id: (e.offeredBook._id || e.offeredBook.id || '').toString(),
+          title: e.offeredBook.title || '',
+          author: e.offeredBook.author || '',
+          department: e.offeredBook.department || '',
+          semester: e.offeredBook.semester || 1,
+          location: e.offeredBook.location || ''
+        } : null);
+
+        const requestedBookObj = reqBookDoc ? {
+          id: (reqBookDoc._id || reqBookDoc.id).toString(),
+          title: reqBookDoc.title,
+          author: reqBookDoc.author,
+          department: reqBookDoc.department,
+          semester: reqBookDoc.semester,
+          location: reqBookDoc.location
+        } : (typeof e.requestedBook === 'object' && e.requestedBook ? {
+          id: (e.requestedBook._id || e.requestedBook.id || '').toString(),
+          title: e.requestedBook.title || '',
+          author: e.requestedBook.author || '',
+          department: e.requestedBook.department || '',
+          semester: e.requestedBook.semester || 1,
+          location: e.requestedBook.location || ''
+        } : null);
+
         return {
           id: e._id.toString(),
           requester_id: reqIdStr,
           requester_name: reqProfile.fullName || 'Student',
           owner_id: ownerIdStr,
           owner_name: ownerProfile.fullName || 'Student',
-          offered_book: e.offeredBook ? {
-            id: (e.offeredBook._id || e.offeredBook.id).toString(),
-            title: e.offeredBook.title,
-            author: e.offeredBook.author,
-            department: e.offeredBook.department,
-            semester: e.offeredBook.semester,
-            location: e.offeredBook.location
-          } : null,
-          requested_book: e.requestedBook ? {
-            id: (e.requestedBook._id || e.requestedBook.id).toString(),
-            title: e.requestedBook.title,
-            author: e.requestedBook.author,
-            department: e.requestedBook.department,
-            semester: e.requestedBook.semester,
-            location: e.requestedBook.location
-          } : null,
+          offered_book: offeredBookObj,
+          requested_book: requestedBookObj,
           match_level: e.matchLevel,
           match_reason: e.matchReason,
           status: e.status,

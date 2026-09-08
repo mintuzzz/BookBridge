@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Repeat, Sparkles, ArrowRightLeft, Star, MapPin, CheckCircle2 } from 'lucide-react';
+import { Repeat, Sparkles, ArrowRightLeft, Star, MapPin, CheckCircle2, Check, X, Clock } from 'lucide-react';
 
-export default function ExchangeMatchCard({ match, onSendProposal }) {
+export default function ExchangeMatchCard({ match, existingProposal, currentUserId, onSendProposal, onAcceptProposal, onRejectProposal }) {
   const { my_book, target_book, match_level, match_reason } = match;
 
   const isPerfect = match_level === 'perfect';
@@ -84,12 +84,73 @@ export default function ExchangeMatchCard({ match, onSendProposal }) {
           {match_reason}
         </p>
 
-        <button
-          onClick={() => onSendProposal && onSendProposal(match)}
-          className={`btn btn-sm ${isPerfect ? 'btn-emerald' : 'btn-blue'}`}
-        >
-          <Repeat size={14} /> Send Exchange Proposal
-        </button>
+        {existingProposal ? (
+          (() => {
+            const isRecipient = currentUserId && (existingProposal.owner_id === currentUserId.toString());
+            const isSender = currentUserId && (existingProposal.requester_id === currentUserId.toString());
+            const isPending = existingProposal.status === 'pending';
+
+            if (isRecipient && isPending) {
+              return (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <button
+                    onClick={() => onRejectProposal && onRejectProposal(existingProposal.id || existingProposal._id)}
+                    className="btn btn-sm btn-outline"
+                    style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                  >
+                    <X size={14} /> Decline
+                  </button>
+                  <button
+                    onClick={() => onAcceptProposal && onAcceptProposal(existingProposal.id || existingProposal._id)}
+                    className="btn btn-sm btn-emerald"
+                  >
+                    <Check size={14} /> Accept Exchange
+                  </button>
+                </div>
+              );
+            }
+
+            if (isSender && isPending) {
+              return (
+                <span className="badge badge-amber" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
+                  <Clock size={14} /> Proposal Sent (Pending Response)
+                </span>
+              );
+            }
+
+            if (['accepted', 'scheduled', 'handover_pending'].includes(existingProposal.status)) {
+              return (
+                <span className="badge badge-blue" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
+                  <CheckCircle2 size={14} /> Exchange Accepted & Active
+                </span>
+              );
+            }
+
+            if (existingProposal.status === 'completed') {
+              return (
+                <span className="badge badge-emerald" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
+                  <Sparkles size={14} /> Exchange Completed
+                </span>
+              );
+            }
+
+            return (
+              <button
+                onClick={() => onSendProposal && onSendProposal(match)}
+                className={`btn btn-sm ${isPerfect ? 'btn-emerald' : 'btn-blue'}`}
+              >
+                <Repeat size={14} /> Send Exchange Proposal
+              </button>
+            );
+          })()
+        ) : (
+          <button
+            onClick={() => onSendProposal && onSendProposal(match)}
+            className={`btn btn-sm ${isPerfect ? 'btn-emerald' : 'btn-blue'}`}
+          >
+            <Repeat size={14} /> Send Exchange Proposal
+          </button>
+        )}
       </div>
     </div>
   );
