@@ -909,13 +909,17 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       })
         .populate('buyer', 'email phone role')
         .populate('seller', 'email phone role')
-        .populate('book')
         .sort({ createdAt: -1 })
         .lean();
 
       const userIds = [...new Set(orders.flatMap((o) => [o.buyer?._id || o.buyer, o.seller?._id || o.seller]).map((id) => id?.toString()).filter(Boolean))];
       const profiles = await UserProfile.find({ user: { $in: userIds } }).lean();
       const profileMap = new Map(profiles.map((p) => [p.user.toString(), p]));
+
+      const rawBookIds = orders.map((o) => (o.book?._id || o.book)?.toString()).filter(Boolean);
+      const bookIds = [...new Set(rawBookIds)];
+      const books = await Book.find({ _id: { $in: bookIds } }).lean();
+      const bookMap = new Map(books.map((b) => [(b._id || b.id).toString(), b]));
 
       const activeOtps = await HandoverOtp.find({
         transactionId: { $in: orders.map((o) => o._id.toString()) },
@@ -935,7 +939,8 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
         const sellerIdStr = (o.seller?._id || o.seller).toString();
         const buyerProf = profileMap.get(buyerIdStr) || {};
         const sellerProf = profileMap.get(sellerIdStr) || {};
-        const b = o.book || {};
+        const bookIdStr = (o.book?._id || o.book || '').toString();
+        const b = bookMap.get(bookIdStr) || (typeof o.book === 'object' && o.book !== null ? o.book : {});
         const activeOtp = otpMap.get(o._id.toString());
 
         let senderHandoverCode = null;
@@ -952,7 +957,7 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
           order_number: o.orderNumber,
           buyer_id: buyerIdStr,
           seller_id: sellerIdStr,
-          book_id: (b._id || b.id || '').toString(),
+          book_id: bookIdStr || (b._id || b.id || '').toString(),
           book_title: b.title || 'Textbook',
           book_author: b.author || '',
           book_condition: b.condition || 'Very Good',
