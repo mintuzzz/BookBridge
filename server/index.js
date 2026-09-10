@@ -3,6 +3,7 @@ import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import initDb from './db/database.js';
 import { initSocket } from './socket.js';
@@ -71,6 +72,42 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve Uploaded Book Images Statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Fallback proxy route for uploaded assets (e.g. books uploaded on Render or remote storage)
+app.get('/uploads/:folder/:filename', async (req, res) => {
+  const { folder, filename } = req.params;
+  const localDir = path.join(__dirname, '..', 'uploads', folder);
+  const localFile = path.join(localDir, filename);
+
+  if (fs.existsSync(localFile)) {
+    return res.sendFile(localFile);
+  }
+
+  const remoteUrl = `https://bookbridge-api-394s.onrender.com/uploads/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
+  try {
+    const remoteRes = await fetch(remoteUrl);
+    if (remoteRes.ok) {
+      const buffer = Buffer.from(await remoteRes.arrayBuffer());
+      if (!fs.existsSync(localDir)) {
+        fs.mkdirSync(localDir, { recursive: true });
+      }
+      try {
+        fs.writeFileSync(localFile, buffer);
+      } catch (writeErr) {
+        console.warn('Failed to cache remote image locally:', writeErr.message);
+      }
+      const contentType = remoteRes.headers.get('content-type') || (filename.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    }
+  } catch (err) {
+    console.warn(`Could not proxy remote image ${remoteUrl}:`, err.message);
+  }
+
+  return res.status(404).send('Image not found');
+});
+
 
 // API Routes
 app.use('/api/auth', authRoutes);

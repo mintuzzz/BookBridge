@@ -52,7 +52,7 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
         
         <div class="otp-box">
           <div class="otp-code">${otpCode}</div>
-          <div class="expiry">⏰ Code expires in 10 minutes</div>
+          <div class="expiry">⏰ Code expires in 5 minutes</div>
         </div>
 
         <p class="text">If you did not request this code, you can safely ignore this email. Do not share this code with anyone.</p>
@@ -107,7 +107,7 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       html: htmlContent
     });
 
-    console.log(`✉️ [Production SMTP] Real OTP email (${otpCode}) sent to ${toEmail} (MessageId: ${info.messageId})`);
+    console.log(`✉️ [Production SMTP] Real OTP email sent successfully to ${toEmail} (MessageId: ${info.messageId})`);
     return { success: true, provider: 'smtp', messageId: info.messageId };
   }
 

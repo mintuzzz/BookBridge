@@ -115,6 +115,19 @@ export default function BookDetailPage() {
   const transactionType = book.transaction_type || book.transactionType || 'buy';
   const sellingPrice = book.selling_price !== undefined ? book.selling_price : (book.sellingPrice !== undefined ? book.sellingPrice : 0);
   const originalPrice = book.original_price !== undefined ? book.original_price : (book.originalPrice !== undefined ? book.originalPrice : 0);
+  const resolveImageUrl = (img) => {
+    if (!img || typeof img !== 'string') return null;
+    const trimmed = img.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+      return trimmed;
+    }
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  };
+
+  const rawImages = (Array.isArray(book?.images) && book.images.length > 0)
+    ? book.images
+    : (book?.image || book?.img ? [book.image || book.img] : []);
+  const bookImages = rawImages.map(resolveImageUrl).filter(Boolean);
 
   return (
     <div style={{ padding: '2.5rem 0' }}>
@@ -128,9 +141,9 @@ export default function BookDetailPage() {
           {/* Left Column: Image Gallery */}
           <div>
             <div className="card" style={{ overflow: 'hidden', height: '400px', backgroundColor: 'var(--bg-secondary)', marginBottom: '1rem', position: 'relative' }}>
-              {book.images && book.images.length > 0 ? (
+              {bookImages.length > 0 ? (
                 <img
-                  src={book.images[activeImageIndex]}
+                  src={bookImages[activeImageIndex] || bookImages[0]}
                   alt={book.title}
                   onError={(e) => {
                     e.target.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600';
@@ -155,9 +168,9 @@ export default function BookDetailPage() {
             </div>
 
             {/* Thumbnail Row */}
-            {book.images && book.images.length > 1 && (
+            {bookImages.length > 1 && (
               <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto' }}>
-                {book.images.map((img, idx) => (
+                {bookImages.map((img, idx) => (
                   <img
                     key={idx}
                     src={img}

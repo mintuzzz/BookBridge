@@ -19,8 +19,10 @@ import MessagesPage from './pages/MessagesPage';
 import WishlistPage from './pages/WishlistPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import VerifyOtpPage from './pages/VerifyOtpPage';
 
 import ErrorBoundary from './components/common/ErrorBoundary';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 export default function App() {
   return (
@@ -36,15 +38,20 @@ export default function App() {
                     <Route path="/" element={<HomePage />} />
                     <Route path="/browse" element={<BrowsePage />} />
                     <Route path="/books/:id" element={<BookDetailPage />} />
-                    <Route path="/sell" element={<SellBookPage />} />
                     <Route path="/exchanges" element={<ExchangePage />} />
                     <Route path="/donations" element={<DonatePage />} />
-                    <Route path="/requests" element={<RequestsPage />} />
-                    <Route path="/orders" element={<OrdersPage />} />
-                    <Route path="/messages" element={<MessagesPage />} />
-                    <Route path="/wishlist" element={<WishlistPage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/admin" element={<AdminDashboardPage />} />
+                    <Route path="/verify-otp" element={<VerifyOtpPage />} />
+
+                    {/* Protected Student Routes */}
+                    <Route path="/sell" element={<ProtectedRoute><SellBookPage /></ProtectedRoute>} />
+                    <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+                    <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+                    <Route path="/requests" element={<ProtectedRoute><RequestsPage /></ProtectedRoute>} />
+                    <Route path="/wishlist" element={<ProtectedRoute><WishlistPage /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+
+                    {/* Protected Admin Route */}
+                    <Route path="/admin" element={<ProtectedRoute adminOnly={true}><AdminDashboardPage /></ProtectedRoute>} />
                   </Routes>
                 </ErrorBoundary>
               </main>

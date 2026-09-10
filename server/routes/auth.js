@@ -7,163 +7,134 @@ import OtpVerification from '../models/OtpVerification.js';
 import EcoPoint from '../models/EcoPoint.js';
 import Notification from '../models/Notification.js';
 import Session from '../models/Session.js';
-import { isMongoConnected, getStore, saveStore } from '../db/database.js';
+import { isMongoConnected, checkIsMongoConnected, getStore, saveStore } from '../db/database.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
 import sendOtpEmail from '../services/emailService.js';
 
 const router = express.Router();
+
+const isDbMongo = () => {
+  return checkIsMongoConnected() || isMongoConnected;
+};
 
 // 1. Register Student Step 1: Submit info, generate & email 6-digit OTP
 router.post('/register', async (req, res) => {
   try {
     const { full_name, email, phone, password, institution, department, semester } = req.body;
 
-    if (!full_name || !email || !phone || !password) {
+    const cleanFullName = typeof full_name === 'string' ? full_name.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+    const cleanPassword = typeof password === 'string' ? password : '';
+
+    if (!cleanFullName || !cleanEmail || !cleanPhone || !cleanPassword || cleanPassword.trim().length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Please provide all required registration fields.'
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    console.log(`📩 [OTP Register Event] Processing registration for: ${cleanEmail}`);
-
-    // Check if email is already registered in MongoDB
-    if (isMongoConnected) {
-      const existing = await User.findOne({ email: cleanEmail });
-      if (existing) {
-        return res.status(400).json({
-          success: false,
-          message: 'An account with this email address already exists.'
-        });
-      }
-    } else {
-      const store = getStore();
-      const existing = store.users.find((u) => u.email.toLowerCase() === cleanEmail);
-      if (existing) {
-        return res.status(400).json({
-          success: false,
-          message: 'An account with this email address already exists.'
-        });
-      }
+    if (cleanPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long.'
+      });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    console.log(`📩 [Register Event] Processing registration for: ${cleanEmail}`);
 
-    let userPayload = null;
-    let token = null;
-
-    if (isMongoConnected) {
-      const newUser = await User.create({
-        email: cleanEmail,
-        phone: phone.trim(),
-        passwordHash,
-        role: 'STUDENT',
-        status: 'active',
-        isEmailVerified: true
-      });
-
-      const newProfile = await UserProfile.create({
-        user: newUser._id,
-        fullName: full_name.trim(),
-        institution: (institution || 'State University of Technology').trim(),
-        department: (department || 'Computer Science').trim(),
-        semester: parseInt(semester, 10) || 1,
-        avatarUrl: '',
-        ecoPoints: 0,
-        rating: 0
-      });
-
-      await Session.create({
-        user: newUser._id,
-        token: 'active_session',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-      });
-
-      await EcoPoint.create({
-        user: newUser._id,
-        points: 50,
-        action: 'register',
-        description: 'Welcome bonus for joining BookBridge!'
-      });
-
-      await Notification.create({
-        user: newUser._id,
-        title: '🎉 Welcome to BookBridge!',
-        message: 'Your student account has been created. You earned 50 Eco Points!',
-        type: 'eco'
-      });
-
-      userPayload = {
-        id: newUser._id.toString(),
-        full_name: newProfile.fullName,
-        email: newUser.email,
-        phone: newUser.phone,
-        role: 'student',
-        institution: newProfile.institution,
-        department: newProfile.department,
-        semester: newProfile.semester,
-        avatar_url: newProfile.avatarUrl || '',
-        eco_points: newProfile.ecoPoints || 0,
-        rating: newProfile.rating || 0
-      };
-
-      token = generateToken(newUser, newProfile);
+    // Check if email already belongs to an existing user
+    let existingUser = null;
+    if (isDbMongo()) {
+      existingUser = await User.findOne({ email: cleanEmail });
     } else {
       const store = getStore();
-      const userId = `user_${Date.now()}`;
-      const newUser = {
-        id: userId,
-        _id: userId,
+      existingUser = store.users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
+    }
+
+    if (existingUser) {
+      // If user is verified (or legacy user without isEmailVerified false), reject registration
+      if (existingUser.isEmailVerified !== false) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already registered.'
+        });
+      }
+      // If unverified user exists, allow sending new OTP / completing registration
+    }
+
+    // Hash password & generate 6-digit cryptographic OTP
+    const passwordHash = await bcrypt.hash(cleanPassword, 10);
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = await bcrypt.hash(otpCode, 10);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiration
+
+    const tempUserData = {
+      fullName: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      passwordHash,
+      institution: (institution || 'State University of Technology').trim(),
+      department: (department || 'Computer Science').trim(),
+      semester: parseInt(semester, 10) || 1
+    };
+
+    if (isDbMongo()) {
+      // Invalidate any previous pending OTP for registration
+      await OtpVerification.deleteMany({ email: cleanEmail, purpose: 'REGISTER' });
+
+      await OtpVerification.create({
         email: cleanEmail,
-        phone: phone.trim(),
-        passwordHash,
-        role: 'STUDENT',
-        status: 'active',
-        isEmailVerified: true
-      };
-
-      const newProfile = {
-        id: `prof_${Date.now()}`,
-        _id: `prof_${Date.now()}`,
-        user: userId,
-        fullName: full_name.trim(),
-        institution: (institution || 'State University of Technology').trim(),
-        department: (department || 'Computer Science').trim(),
-        semester: parseInt(semester, 10) || 1,
-        avatarUrl: '',
-        ecoPoints: 0,
-        rating: 0
-      };
-
-      store.users.push(newUser);
-      store.userprofiles.push(newProfile);
+        otpHash,
+        purpose: 'REGISTER',
+        expiresAt,
+        attempts: 0,
+        verified: false,
+        tempUserData
+      });
+    } else {
+      const store = getStore();
+      store.otpverifications = (store.otpverifications || []).filter(
+        (o) => !(o.email === cleanEmail && o.purpose === 'REGISTER')
+      );
+      store.otpverifications.push({
+        id: `otp_${Date.now()}`,
+        _id: `otp_${Date.now()}`,
+        email: cleanEmail,
+        otpHash,
+        purpose: 'REGISTER',
+        expiresAt: expiresAt.toISOString(),
+        attempts: 0,
+        verified: false,
+        tempUserData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
       saveStore();
-
-      userPayload = {
-        id: userId,
-        full_name: newProfile.fullName,
-        email: newUser.email,
-        phone: newUser.phone,
-        role: 'student',
-        institution: newProfile.institution,
-        department: newProfile.department,
-        semester: newProfile.semester,
-        avatar_url: newProfile.avatarUrl || '',
-        eco_points: newProfile.ecoPoints || 0,
-        rating: newProfile.rating || 0
-      };
-
-      token = generateToken(newUser, newProfile);
     }
 
-    console.log(`✅ [Direct Register Success] Student account created directly for: ${cleanEmail}`);
+    // Send real OTP email to user's inbox
+    try {
+      await sendOtpEmail({
+        toEmail: cleanEmail,
+        studentName: cleanFullName,
+        otpCode,
+        purpose: 'REGISTER'
+      });
+      console.log(`✉️ Real OTP email dispatched successfully to: ${cleanEmail}`);
+    } catch (emailErr) {
+      console.error(`❌ Failed to send OTP email: ${emailErr.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Could not send verification email. Please check your email configuration or try again.'
+      });
+    }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: 'Account created successfully! Welcome to BookBridge.',
-      token,
-      user: userPayload
+      message: 'Verification code sent to your email.',
+      email: cleanEmail,
+      expiresIn: 300
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -228,7 +199,8 @@ router.post('/verify-otp', async (req, res) => {
       console.warn(`⏰ [OTP Expired] Expiry time: ${new Date(record.expiresAt).toISOString()}, Current time: ${new Date().toISOString()}`);
       return res.status(400).json({
         success: false,
-        message: 'Verification code has expired. Please request a new code.'
+        message: 'Verification code has expired. Please request a new code.',
+        expired: true
       });
     }
 
@@ -237,7 +209,8 @@ router.post('/verify-otp', async (req, res) => {
       console.warn(`⛔ [OTP Attempt Limit Exceeded] Email: ${cleanEmail}, Attempts: ${record.attempts}`);
       return res.status(400).json({
         success: false,
-        message: 'Too many verification attempts. Please request a new code.'
+        message: 'Too many verification attempts. Please request a new code.',
+        maxAttempts: true
       });
     }
 
@@ -257,7 +230,8 @@ router.post('/verify-otp', async (req, res) => {
       if (record.attempts >= 5) {
         return res.status(400).json({
           success: false,
-          message: 'Too many verification attempts. Please request a new code.'
+          message: 'Too many verification attempts. Please request a new code.',
+          maxAttempts: true
         });
       }
 
@@ -345,6 +319,9 @@ router.post('/verify-otp', async (req, res) => {
         newProfile = await UserProfile.findOne({ user: newUser._id });
       }
 
+      // Clean up OTP record after successful account activation
+      await OtpVerification.deleteMany({ email: cleanEmail, purpose: 'REGISTER' });
+
       userPayload = {
         id: newUser._id.toString(),
         full_name: newProfile ? newProfile.fullName : tempUser.fullName,
@@ -355,7 +332,7 @@ router.post('/verify-otp', async (req, res) => {
         department: newProfile ? newProfile.department : tempUser.department,
         semester: newProfile ? newProfile.semester : tempUser.semester,
         avatar_url: newProfile ? newProfile.avatarUrl : '',
-        eco_points: newProfile ? newProfile.ecoPoints : 0,
+        eco_points: newProfile ? newProfile.ecoPoints : 50,
         rating: newProfile ? (newProfile.rating || 0) : 0
       };
 
@@ -387,16 +364,24 @@ router.post('/verify-otp', async (req, res) => {
           department: tempUser.department,
           semester: tempUser.semester,
           avatarUrl: '',
-          ecoPoints: 0,
+          ecoPoints: 50,
           rating: 0
         };
 
         store.users.push(newUser);
         store.userprofiles.push(newProfile);
-        saveStore();
       } else {
+        newUser.isEmailVerified = true;
+        newUser.status = 'active';
+        newUser.passwordHash = tempUser.passwordHash;
+        newUser.phone = tempUser.phone;
         newProfile = store.userprofiles.find((p) => (p.user?._id || p.user).toString() === (newUser._id || newUser.id).toString());
       }
+
+      store.otpverifications = (store.otpverifications || []).filter(
+        (o) => !(o.email === cleanEmail && o.purpose === 'REGISTER')
+      );
+      saveStore();
 
       userPayload = {
         id: (newUser._id || newUser.id).toString(),
@@ -408,7 +393,7 @@ router.post('/verify-otp', async (req, res) => {
         department: newProfile ? newProfile.department : tempUser.department,
         semester: newProfile ? newProfile.semester : tempUser.semester,
         avatar_url: newProfile ? newProfile.avatarUrl : '',
-        eco_points: newProfile ? newProfile.ecoPoints : 0,
+        eco_points: newProfile ? newProfile.ecoPoints : 50,
         rating: newProfile ? (newProfile.rating || 0) : 0
       };
 
@@ -417,7 +402,7 @@ router.post('/verify-otp', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Account verified and created successfully!',
+      message: 'Account verified and created successfully! Welcome to BookBridge.',
       token,
       user: userPayload
     });
@@ -447,7 +432,7 @@ router.post('/resend-otp', async (req, res) => {
     const store = getStore();
 
     let record = null;
-    if (isMongoConnected) {
+    if (isDbMongo()) {
       record = await OtpVerification.findOne({ email: cleanEmail, purpose: cleanPurpose }).sort({ createdAt: -1 });
     } else {
       const list = store.otpverifications
@@ -459,26 +444,35 @@ router.post('/resend-otp', async (req, res) => {
     if (!record) {
       return res.status(400).json({
         success: false,
-        message: 'No active verification session found. Please register again.'
+        message: 'No pending registration found for this email. Please register again.'
+      });
+    }
+
+    if (record.verified) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email has already been verified.'
       });
     }
 
     // 60-Second Cooldown Enforcement
-    const createdAtTime = new Date(record.createdAt).getTime();
-    const secondsPassed = Math.floor((Date.now() - createdAtTime) / 1000);
+    const lastSentTime = new Date(record.updatedAt || record.createdAt).getTime();
+    const secondsPassed = Math.floor((Date.now() - lastSentTime) / 1000);
     if (secondsPassed < 60) {
+      const waitSeconds = 60 - secondsPassed;
       return res.status(429).json({
         success: false,
-        message: `Please wait ${60 - secondsPassed} seconds before requesting a new code.`
+        message: `Please wait ${waitSeconds} seconds before requesting a new code.`,
+        waitSeconds
       });
     }
 
     // Generate new 6-digit OTP code & hash
     const newOtpCode = crypto.randomInt(100000, 1000000).toString();
     const newOtpHash = await bcrypt.hash(newOtpCode, 10);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiration
 
-    if (isMongoConnected) {
+    if (isDbMongo()) {
       await OtpVerification.deleteMany({ email: cleanEmail, purpose: cleanPurpose, verified: false });
 
       await OtpVerification.create({
@@ -504,14 +498,15 @@ router.post('/resend-otp', async (req, res) => {
         attempts: 0,
         verified: false,
         tempUserData: record.tempUserData,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
       saveStore();
     }
 
     const studentName = record.tempUserData ? record.tempUserData.fullName : 'Student';
 
-    // Dispatch email
+    // Dispatch real email (No OTP in console log!)
     try {
       await sendOtpEmail({
         toEmail: cleanEmail,
@@ -519,20 +514,25 @@ router.post('/resend-otp', async (req, res) => {
         otpCode: newOtpCode,
         purpose: cleanPurpose
       });
-      console.log(`📧 [Email Provider Success] OTP Resent to: ${cleanEmail}`);
+      console.log(`✉️ Real OTP email resent successfully to: ${cleanEmail}`);
     } catch (emailErr) {
-      console.error(`⚠️ [Email Provider Resend Fallback] Could not resend email (${emailErr.message}). Dispatched code to server log: ${newOtpCode}`);
+      console.error(`❌ Failed to resend verification email: ${emailErr.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Could not resend verification email. Please try again later.'
+      });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: 'A new 6-digit verification code has been sent to your email.'
+      message: 'A new 6-digit verification code has been sent to your email.',
+      expiresIn: 300
     });
   } catch (err) {
     console.error('Resend OTP error:', err);
     return res.status(500).json({
       success: false,
-      message: err.message || 'We couldn\'t resend the verification email.'
+      message: err.message || 'We could not resend the verification email.'
     });
   }
 });
@@ -606,9 +606,9 @@ router.post('/forgot-password', async (req, res) => {
         otpCode,
         purpose: 'PASSWORD_RESET'
       });
-      console.log(`📧 [Email Provider Success] Password Reset OTP sent to: ${cleanEmail}`);
+      console.log(`✉️ Password reset verification email dispatched to: ${cleanEmail}`);
     } catch (emailErr) {
-      console.error(`⚠️ [Email Provider Forgot Fallback] Could not send password reset email (${emailErr.message}). Dispatched code to server log: ${otpCode}`);
+      console.error(`❌ Failed to send password reset email: ${emailErr.message}`);
     }
 
     return res.json({
@@ -679,28 +679,31 @@ router.post('/reset-password', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
+
+    const cleanEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const rawPassword = typeof password === 'string' ? password : '';
+
+    if (!cleanEmail || !rawPassword || rawPassword.trim().length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Please enter both email and password.'
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
     const store = getStore();
 
     let user = null;
     let profile = null;
 
-    if (isMongoConnected) {
+    if (isDbMongo()) {
       user = await User.findOne({ email: cleanEmail }).lean();
       if (user) profile = await UserProfile.findOne({ user: user._id }).lean();
     } else {
-      user = store.users.find((u) => u.email.toLowerCase() === cleanEmail);
+      user = store.users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
       if (user) profile = store.userprofiles.find((p) => (p.user?._id || p.user).toString() === (user._id || user.id).toString());
     }
 
-    if (!user) {
+    if (!user || !user.passwordHash) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
@@ -714,11 +717,21 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const match = await bcrypt.compare(password, user.passwordHash);
+    const match = await bcrypt.compare(rawPassword, user.passwordHash);
     if (!match) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
+      });
+    }
+
+    // Block unverified accounts from logging in
+    if (user.isEmailVerified === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Please verify your email before logging in.',
+        unverified: true,
+        email: user.email
       });
     }
 
@@ -763,7 +776,7 @@ router.get('/me', authenticateToken, async (req, res) => {
     let user = null;
     let profile = null;
 
-    if (isMongoConnected) {
+    if (isDbMongo()) {
       user = await User.findById(userId).lean();
       if (user) profile = await UserProfile.findOne({ user: userId }).lean();
     } else {

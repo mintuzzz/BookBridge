@@ -220,7 +220,14 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh, isHighlighted
     }
   };
 
-  const mainImage = order.images && order.images.length > 0 ? order.images[0] : null;
+  const resolveImageUrl = (img) => {
+    if (!img || typeof img !== 'string') return null;
+    const trimmed = img.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) return trimmed;
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  };
+
+  const mainImage = resolveImageUrl(order.images && order.images.length > 0 ? order.images[0] : null);
 
   return (
     <div
@@ -290,6 +297,10 @@ function OrderCard({ order, currentUserId, activeToken, onRefresh, isHighlighted
           <img
             src={mainImage}
             alt={order.book_title}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600';
+            }}
             style={{ width: '64px', height: '80px', objectFit: 'cover', borderRadius: '8px' }}
           />
         ) : (

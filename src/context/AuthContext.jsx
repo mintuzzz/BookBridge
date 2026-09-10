@@ -6,6 +6,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('bb_token') || null);
   const [loading, setLoading] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('login'); // 'login' | 'register'
 
   // Sync token and load user state on mount
   useEffect(() => {
@@ -17,10 +19,19 @@ export const AuthProvider = ({ children }) => {
           if (res.ok) return res.json();
           throw new Error('Session expired');
         })
-        .then((data) => setUser(data))
-        .catch(() => logout())
+        .then((data) => {
+          if (data && data.id) {
+            setUser(data);
+          } else {
+            throw new Error('Invalid user payload');
+          }
+        })
+        .catch(() => {
+          logout();
+        })
         .finally(() => setLoading(false));
     } else {
+      setUser(null);
       setLoading(false);
     }
   }, [token]);
@@ -38,8 +49,24 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (updatedData) => {
-    setUser((prev) => ({ ...prev, ...updatedData }));
+    setUser((prev) => (prev ? { ...prev, ...updatedData } : null));
   };
+
+  const openLogin = () => {
+    setAuthModalMode('login');
+    setShowAuthModal(true);
+  };
+
+  const openRegister = () => {
+    setAuthModalMode('register');
+    setShowAuthModal(true);
+  };
+
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+  };
+
+  const role = (user?.role || '').toLowerCase();
 
   return (
     <AuthContext.Provider
@@ -50,9 +77,15 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         updateUser,
-        isAuthenticated: !!user,
-        isAdmin: user?.role === 'admin',
-        isStudent: user?.role === 'student'
+        isAuthenticated: !!user && !!token,
+        isAdmin: role === 'admin',
+        isStudent: role === 'student',
+        showAuthModal,
+        authModalMode,
+        setAuthModalMode,
+        openLogin,
+        openRegister,
+        closeAuthModal
       }}
     >
       {children}

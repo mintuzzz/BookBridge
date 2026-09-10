@@ -44,6 +44,23 @@ const formatBookDoc = (b, profile = {}, user = {}) => {
   const transType = b.transactionType || b.transaction_type || 'buy';
   const sellerIdStr = b.seller?._id ? b.seller._id.toString() : (b.seller ? b.seller.toString() : '');
 
+  let rawImages = [];
+  if (Array.isArray(b.images) && b.images.length > 0) {
+    rawImages = b.images;
+  } else if (typeof b.image === 'string' && b.image.trim()) {
+    rawImages = [b.image.trim()];
+  } else if (typeof b.img === 'string' && b.img.trim()) {
+    rawImages = [b.img.trim()];
+  }
+
+  const normalizedImages = rawImages
+    .filter((img) => typeof img === 'string' && img.trim())
+    .map((img) => {
+      const trimmed = img.trim();
+      if (trimmed.startsWith('uploads/')) return `/${trimmed}`;
+      return trimmed;
+    });
+
   return {
     id: (b._id || b.id).toString(),
     _id: (b._id || b.id).toString(),
@@ -72,7 +89,7 @@ const formatBookDoc = (b, profile = {}, user = {}) => {
     status: b.status || 'available',
     location: b.location,
     description: b.description || '',
-    images: Array.isArray(b.images) ? b.images : [],
+    images: normalizedImages,
     wanted_book_title: b.wantedBookTitle || b.wanted_book_title || null,
     wantedBookTitle: b.wantedBookTitle || b.wanted_book_title || null,
     view_count: b.viewCount || b.view_count || 0,
