@@ -21,7 +21,7 @@ import {
 export default function BookDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout, openLogin } = useAuth();
   const { showToast } = useNotification();
 
   const [book, setBook] = useState(null);
@@ -43,13 +43,15 @@ export default function BookDetailPage() {
 
   const handleRequestToBuy = async () => {
     if (!isAuthenticated) {
-      showToast('Please log in to send a purchase request.', 'info');
+      showToast('Please log in to send a request for this book.', 'info');
+      openLogin();
       return;
     }
 
     setReserving(true);
     try {
       const activeToken = localStorage.getItem('bb_token');
+      const isDonate = (book?.transaction_type === 'donate' || book?.transactionType === 'donate');
       const res = await fetch('/api/orders/request-to-buy', {
         method: 'POST',
         headers: {
@@ -57,16 +59,27 @@ export default function BookDetailPage() {
           Authorization: `Bearer ${activeToken}`
         },
         body: JSON.stringify({
-          book_id: book.id,
-          payment_method: paymentMethod,
-          pickup_notes: `Campus pickup at ${book.location}`
+          book_id: book.id || book._id,
+          payment_method: isDonate ? 'free' : paymentMethod,
+          pickup_notes: `Campus pickup at ${book.location || 'campus'}`
         })
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || 'Failed to send purchase request');
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          logout();
+          openLogin();
+          throw new Error('Your session has expired. Please log in again to request this book.');
+        }
+        throw new Error(data.error || data.message || 'Failed to send request');
+      }
 
-      showToast('🎉 Purchase request sent to seller! Waiting for response.', 'success', 'Request Sent');
+      const successTitle = isDonate ? 'Free Book Requested' : 'Request Sent';
+      const successMsg = isDonate
+        ? '🎉 Free book request sent to donor! Waiting for confirmation.'
+        : '🎉 Purchase request sent to seller! Waiting for response.';
+      showToast(successMsg, 'success', successTitle);
       navigate('/orders');
     } catch (err) {
       showToast(err.message, 'error', 'Request Failed');
