@@ -33,6 +33,7 @@ export const resolveIpv4Host = async (hostname) => {
  * Trims whitespace, strips accidental wrapping quotes, and resolves provider priority.
  */
 export const getEmailConfig = () => {
+  const BREVO_API_KEY = (process.env.BREVO_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const SMTP_HOST = (process.env.SMTP_HOST || '').replace(/^["']|["']$/g, '').trim();
   const portStr = (process.env.SMTP_PORT || '').toString().replace(/^["']|["']$/g, '').trim();
@@ -50,11 +51,16 @@ export const getEmailConfig = () => {
   const defaultPort = 587;
   const SMTP_PORT = portStr ? parseInt(portStr, 10) || defaultPort : defaultPort;
 
+  const isBrevoConfigured = Boolean(BREVO_API_KEY && !BREVO_API_KEY.includes('placeholder'));
   const isResendConfigured = Boolean(RESEND_API_KEY && !RESEND_API_KEY.includes('placeholder'));
 
-  // Provider selection: prioritize Gmail SMTP when SMTP credentials are present
+  // Provider selection: prioritize Brevo or Resend for cloud delivery to all recipients
   let preferredProvider = 'none';
-  if (process.env.EMAIL_PROVIDER === 'resend' && isResendConfigured) {
+  if (process.env.EMAIL_PROVIDER === 'brevo' && isBrevoConfigured) {
+    preferredProvider = 'brevo';
+  } else if (isBrevoConfigured) {
+    preferredProvider = 'brevo';
+  } else if (process.env.EMAIL_PROVIDER === 'resend' && isResendConfigured) {
     preferredProvider = 'resend';
   } else if (isSmtpConfigured) {
     preferredProvider = 'smtp';
@@ -63,6 +69,8 @@ export const getEmailConfig = () => {
   }
 
   return {
+    BREVO_API_KEY,
+    isBrevoConfigured,
     RESEND_API_KEY,
     SMTP_HOST: SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost'),
     SMTP_PORT,
@@ -84,6 +92,7 @@ export const logEmailDiagnostics = () => {
   const maskedUser = cfg.SMTP_USER ? cfg.SMTP_USER.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'none';
 
   console.log('📧 [Email Service Diagnostic]');
+  console.log(`   - Brevo configured: ${cfg.isBrevoConfigured}`);
   console.log(`   - SMTP_HOST configured: ${Boolean(cfg.SMTP_HOST)} (${cfg.SMTP_HOST || 'none'})`);
   console.log(`   - SMTP_PORT: ${cfg.SMTP_PORT}`);
   console.log(`   - SMTP_USER configured: ${Boolean(cfg.SMTP_USER)} (${maskedUser})`);
@@ -265,6 +274,36 @@ export const verifyEmailConfig = async (options = {}) => {
     }
   }
 
+  if (cfg.preferredProvider === 'brevo') {
+    try {
+      const resp = await fetch('https://api.brevo.com/v3/account', {
+        headers: {
+          'accept': 'application/json',
+          'api-key': cfg.BREVO_API_KEY
+        }
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        return {
+          success: false,
+          message: `Brevo API key verification failed: ${data.message || resp.statusText}`,
+          diagnostics: { ...diagnostics, brevoConfigured: true }
+        };
+      }
+      return {
+        success: true,
+        message: `Brevo API verified successfully. Account: ${data.email || 'active'}. Ready to send OTPs to all students.`,
+        diagnostics: { ...diagnostics, brevoConfigured: true, brevoAccount: data.email }
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: `Brevo verification error: ${err.message}`,
+        diagnostics: { ...diagnostics, brevoConfigured: true }
+      };
+    }
+  }
+
   if (cfg.preferredProvider === 'resend') {
     try {
       const resendClient = new Resend(cfg.RESEND_API_KEY);
@@ -390,6 +429,38 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
 
       throw smtpErr;
     }
+  }
+
+  // 1. Dispatch via Brevo REST API (HTTPS port 443 - Can send to ANY recipient worldwide)
+  if (cfg.preferredProvider === 'brevo') {
+    const rawSender = cfg.OTP_FROM_EMAIL || cfg.SMTP_USER || 'aleenax657@gmail.com';
+    const senderEmail = (rawSender.includes('<') ? rawSender.replace(/.*<([^>]+)>.*/, '$1') : rawSender).trim();
+    const senderName = 'BookBridge';
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': cfg.BREVO_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: toEmail, name: studentName || 'Student' }],
+        subject,
+        htmlContent
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(`❌ [Brevo API Error ${response.status}]: ${data.message || JSON.stringify(data)}`);
+      throw new Error(`Brevo API Error: ${data.message || response.statusText}`);
+    }
+
+    console.log(`✉️ [Brevo] Real OTP email sent successfully to ${toEmail} (MessageId: ${data.messageId})`);
+    return { success: true, provider: 'brevo', messageId: data.messageId };
   }
 
   // 2. Dispatch via Resend API (if Resend is active provider)
