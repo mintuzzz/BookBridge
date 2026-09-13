@@ -143,6 +143,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
       const qrCodeData = `BB-VERIFY-${pickupOtp}-${orderNumber}`;
 
+      const isDonate = (book.transactionType === 'donate' || payment_method === 'free');
+      const finalPaymentMethod = isDonate ? 'free' : (payment_method || 'upi');
+
       const newOrder = await Order.create({
         orderNumber,
         buyer: currentUserId,
@@ -150,9 +153,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
         book: book._id,
         transactionType: book.transactionType || 'buy',
         status: 'pending',
-        paymentMethod: payment_method || 'upi',
-        paymentStatus: 'unpaid',
-        totalAmount: book.sellingPrice || 0,
+        paymentMethod: finalPaymentMethod,
+        paymentStatus: isDonate ? 'paid_at_pickup' : 'unpaid',
+        totalAmount: isDonate ? 0 : (book.sellingPrice || 0),
         pickupOtp,
         qrCodeData,
         pickupNotes: pickup_notes || 'Meet at campus pickup location.'
@@ -161,8 +164,10 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       try {
         const notif = await Notification.create({
           user: book.seller,
-          title: '🛍️ New Purchase Request!',
-          message: `${req.user.full_name || 'A student'} requested to buy your book "${book.title}" for ₹${book.sellingPrice}.`,
+          title: isDonate ? '🎁 New Free Book Request!' : '🛍️ New Purchase Request!',
+          message: isDonate
+            ? `${req.user.full_name || 'A student'} requested your free book "${book.title}".`
+            : `${req.user.full_name || 'A student'} requested to buy your book "${book.title}" for ₹${book.sellingPrice}.`,
           type: 'order',
           link: '/orders'
         });
@@ -173,7 +178,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       } catch (e) {}
 
       return res.status(201).json({
-        message: 'Purchase request sent successfully! Waiting for seller response.',
+        message: isDonate
+          ? 'Free book request sent successfully! Waiting for donor response.'
+          : 'Purchase request sent successfully! Waiting for seller response.',
         order: newOrder
       });
     } else {
@@ -181,8 +188,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       const book = store.books.find((b) => (b._id || b.id).toString() === book_id.toString());
       if (!book) return res.status(404).json({ error: 'Book listing not found.' });
 
-      if (book.seller.toString() === currentUserId) {
-        return res.status(400).json({ error: 'You cannot purchase your own book listing.' });
+      const sellerId = (book.seller?._id || book.seller || '').toString();
+      if (sellerId && sellerId === currentUserId) {
+        return res.status(400).json({ error: 'You cannot request your own book listing.' });
       }
 
       if (book.status !== 'available') {
@@ -193,6 +201,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
       const qrCodeData = `BB-VERIFY-${pickupOtp}-${orderNumber}`;
 
+      const isDonate = (book.transactionType === 'donate' || payment_method === 'free');
+      const finalPaymentMethod = isDonate ? 'free' : (payment_method || 'upi');
+
       const newOrder = {
         id: `ord_${Date.now()}`,
         _id: `ord_${Date.now()}`,
@@ -202,9 +213,9 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
         book: book_id,
         transactionType: book.transactionType || 'buy',
         status: 'pending',
-        paymentMethod: payment_method || 'upi',
-        paymentStatus: 'unpaid',
-        totalAmount: book.sellingPrice || 0,
+        paymentMethod: finalPaymentMethod,
+        paymentStatus: isDonate ? 'paid_at_pickup' : 'unpaid',
+        totalAmount: isDonate ? 0 : (book.sellingPrice || 0),
         pickupOtp,
         qrCodeData,
         pickupNotes: pickup_notes || 'Meet at campus pickup location.',
@@ -215,13 +226,15 @@ router.post('/request-to-buy', authenticateToken, async (req, res) => {
       saveStore();
 
       return res.status(201).json({
-        message: 'Purchase request sent successfully!',
+        message: isDonate
+          ? 'Free book request sent successfully! Waiting for donor response.'
+          : 'Purchase request sent successfully!',
         order: newOrder
       });
     }
   } catch (err) {
     console.error('Request to buy error:', err);
-    return res.status(500).json({ error: 'Failed to create purchase request.' });
+    return res.status(500).json({ error: err.message || 'Failed to create purchase request.' });
   }
 });
 
