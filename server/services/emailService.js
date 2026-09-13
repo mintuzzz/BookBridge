@@ -1,14 +1,32 @@
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import dns from 'dns';
+import dnsPromises from 'dns/promises';
+import net from 'net';
 
 dotenv.config();
 
-// Ensure IPv4 resolution priority in cloud containers (Render/AWS) where outbound IPv6 is unreachable
-if (dns && typeof dns.setDefaultResultOrder === 'function') {
-  dns.setDefaultResultOrder('ipv4first');
-}
+/**
+ * Resolves a hostname directly to an IPv4 address.
+ * Because cloud container environments (Render/AWS) do not have outbound IPv6 routing,
+ * resolving to IPv4 prevents Nodemailer from randomly attempting unreachable IPv6 addresses.
+ */
+export const resolveIpv4Host = async (hostname) => {
+  if (!hostname || net.isIP(hostname)) {
+    return { host: hostname, servername: hostname };
+  }
+
+  try {
+    const addresses = await dnsPromises.resolve4(hostname);
+    if (addresses && addresses.length > 0) {
+      return { host: addresses[0], servername: hostname };
+    }
+  } catch (err) {
+    console.warn(`IPv4 DNS resolution fallback for ${hostname}: ${err.message}`);
+  }
+
+  return { host: hostname, servername: hostname };
+};
 
 /**
  * Defensive configuration resolver.
@@ -29,8 +47,7 @@ export const getEmailConfig = () => {
     (SMTP_HOST && SMTP_HOST.toLowerCase().includes('gmail')) ||
     (SMTP_USER && SMTP_USER.toLowerCase().endsWith('@gmail.com'));
 
-  // Default to port 465 with SSL for Gmail (works reliably on Render/cloud hosts where 587 is throttled)
-  const defaultPort = isGmail ? 465 : 587;
+  const defaultPort = 587;
   const SMTP_PORT = portStr ? parseInt(portStr, 10) || defaultPort : defaultPort;
 
   const isResendConfigured = Boolean(RESEND_API_KEY && !RESEND_API_KEY.includes('placeholder'));
@@ -80,32 +97,34 @@ export const logEmailDiagnostics = () => {
 logEmailDiagnostics();
 
 /**
- * Creates a Nodemailer transporter with resilient connection timeouts and IPv4 forcing.
+ * Creates a Nodemailer transporter with direct IPv4 resolution to prevent ENETUNREACH on Render.
  */
-export const createSmtpTransporter = (options = {}) => {
+export const createSmtpTransporter = async (options = {}) => {
   const cfg = getEmailConfig();
 
-  const host = options.host || cfg.SMTP_HOST || 'smtp.gmail.com';
+  const targetHost = options.host || cfg.SMTP_HOST || 'smtp.gmail.com';
+  const { host: ipv4Host, servername } = await resolveIpv4Host(targetHost);
+
   const port = options.port || cfg.SMTP_PORT;
   const secure = options.secure !== undefined ? options.secure : (port === 465);
 
   return nodemailer.createTransport({
-    host,
+    host: ipv4Host,
     port,
     secure,
-    family: 4, // Force IPv4 to prevent ENETUNREACH in cloud containers
-    lookup: (hostname, opts, cb) => dns.lookup(hostname, { family: 4 }, cb),
+    servername,
     auth: {
       user: cfg.SMTP_USER,
       pass: cfg.SMTP_PASS
     },
     tls: {
+      servername,
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 45000
+    connectionTimeout: 25000,
+    greetingTimeout: 25000,
+    socketTimeout: 35000
   });
 };
 
@@ -138,16 +157,14 @@ export const verifyEmailConfig = async () => {
   }
 
   if (cfg.preferredProvider === 'smtp') {
-    // Try primary port (465 SSL for Gmail, or configured port)
-    const primaryPort = cfg.isGmail ? 465 : cfg.SMTP_PORT;
-    const primarySecure = primaryPort === 465;
+    const primaryPort = cfg.SMTP_PORT || 587;
 
     try {
-      const transporter = createSmtpTransporter({ port: primaryPort, secure: primarySecure });
+      const transporter = await createSmtpTransporter({ port: primaryPort, secure: primaryPort === 465 });
       await transporter.verify();
       return {
         success: true,
-        message: `Gmail SMTP verified successfully on port ${primaryPort} (Direct SSL).`,
+        message: `Gmail SMTP verified successfully on port ${primaryPort}.`,
         diagnostics: { ...diagnostics, activePort: primaryPort }
       };
     } catch (err) {
@@ -157,7 +174,7 @@ export const verifyEmailConfig = async () => {
       const altPort = primaryPort === 465 ? 587 : 465;
       try {
         console.log(`🔄 Attempting fallback verification via port ${altPort}...`);
-        const fallbackTransporter = createSmtpTransporter({ port: altPort, secure: altPort === 465 });
+        const fallbackTransporter = await createSmtpTransporter({ port: altPort, secure: altPort === 465 });
         await fallbackTransporter.verify();
         return {
           success: true,
@@ -239,13 +256,13 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
 
   // 1. Dispatch via Production SMTP Server (Prioritized for Gmail)
   if (cfg.preferredProvider === 'smtp') {
-    // For Gmail SMTP, the 'from' address must be the authenticated user address
+    // For Gmail SMTP, ensure the 'from' address uses the authenticated Gmail address
     const fromAddress = (cfg.isGmail && (!cfg.OTP_FROM_EMAIL || cfg.OTP_FROM_EMAIL.includes('resend.dev')))
       ? `BookBridge <${cfg.SMTP_USER}>`
       : (cfg.OTP_FROM_EMAIL || `BookBridge <${cfg.SMTP_USER}>`);
 
     const trySend = async (transportOptions) => {
-      const transporter = createSmtpTransporter(transportOptions);
+      const transporter = await createSmtpTransporter(transportOptions);
       return await transporter.sendMail({
         from: fromAddress,
         to: toEmail,
@@ -254,8 +271,7 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       });
     };
 
-    // Primary attempt: use configured SMTP_PORT (defaults to 587 or 465)
-    const primaryPort = cfg.SMTP_PORT || (cfg.isGmail ? 587 : 587);
+    const primaryPort = cfg.SMTP_PORT || 587;
     const primarySecure = primaryPort === 465;
 
     try {
@@ -269,7 +285,7 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       console.error(`   - Command: ${smtpErr.command || 'N/A'}`);
       console.error(`   - Response: ${smtpErr.response || 'N/A'}`);
 
-      // Attempt alternate port (465 <-> 587)
+      // Attempt alternate port (587 <-> 465)
       const altPort = primaryPort === 465 ? 587 : 465;
       try {
         console.log(`🔄 Attempting fallback send via port ${altPort}...`);
