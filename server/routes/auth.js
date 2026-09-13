@@ -20,7 +20,8 @@ const isDbMongo = () => {
 // Safe diagnostic endpoint to test email configuration in production without exposing secrets
 router.get('/email-diagnostics', async (req, res) => {
   try {
-    const result = await verifyEmailConfig();
+    const portOverride = req.query.port ? parseInt(req.query.port, 10) : undefined;
+    const result = await verifyEmailConfig({ port: portOverride });
     return res.status(result.success ? 200 : 500).json(result);
   } catch (err) {
     return res.status(500).json({

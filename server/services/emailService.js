@@ -97,6 +97,38 @@ export const logEmailDiagnostics = () => {
 logEmailDiagnostics();
 
 /**
+ * TCP Port Prober to test network reachability to SMTP ports within cloud containers.
+ */
+export const probeTcpPort = (host, port, timeoutMs = 3000) => {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const socket = new net.Socket();
+    let isDone = false;
+
+    const finish = (reachable, error = null) => {
+      if (!isDone) {
+        isDone = true;
+        socket.removeAllListeners();
+        socket.destroy();
+        resolve({
+          port,
+          reachable,
+          error,
+          latencyMs: Date.now() - start
+        });
+      }
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false, 'ETIMEDOUT'));
+    socket.once('error', (err) => finish(false, err.code || err.message));
+
+    socket.connect(port, host);
+  });
+};
+
+/**
  * Creates a Nodemailer transporter with direct IPv4 resolution to prevent ENETUNREACH on Render.
  */
 export const createSmtpTransporter = async (options = {}) => {
@@ -122,18 +154,32 @@ export const createSmtpTransporter = async (options = {}) => {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 25000,
-    greetingTimeout: 25000,
-    socketTimeout: 35000
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 };
 
 /**
  * Safe verification helper to validate SMTP/Resend connection without sending an email.
  */
-export const verifyEmailConfig = async () => {
+export const verifyEmailConfig = async (options = {}) => {
   const cfg = getEmailConfig();
   const maskedUser = cfg.SMTP_USER ? cfg.SMTP_USER.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null;
+  const targetHost = cfg.SMTP_HOST || 'smtp.gmail.com';
+  const { host: ipv4Host } = await resolveIpv4Host(targetHost);
+
+  // Probe both standard SMTP ports in parallel
+  const [probe465, probe587] = await Promise.all([
+    probeTcpPort(ipv4Host, 465, 3000),
+    probeTcpPort(ipv4Host, 587, 3000)
+  ]);
+
+  const networkProbes = {
+    resolvedIpv4: ipv4Host,
+    port465: probe465,
+    port587: probe587
+  };
 
   const diagnostics = {
     provider: cfg.preferredProvider,
@@ -145,7 +191,8 @@ export const verifyEmailConfig = async () => {
     smtpPassConfigured: Boolean(cfg.SMTP_PASS),
     smtpPassLength: cfg.SMTP_PASS ? cfg.SMTP_PASS.length : 0,
     otpFromEmailConfigured: Boolean(cfg.OTP_FROM_EMAIL),
-    resendConfigured: cfg.isResendConfigured
+    resendConfigured: cfg.isResendConfigured,
+    networkProbes
   };
 
   if (!cfg.isSmtpConfigured && !cfg.isResendConfigured) {
@@ -157,7 +204,17 @@ export const verifyEmailConfig = async () => {
   }
 
   if (cfg.preferredProvider === 'smtp') {
-    const primaryPort = cfg.SMTP_PORT || 587;
+    // Determine primary port:
+    // If explicitly requested via options.port (e.g. from query param ?port=465), use that.
+    // Otherwise, if port 465 probe succeeded and 587 failed, automatically select 465.
+    let primaryPort = options.port ? parseInt(options.port, 10) : cfg.SMTP_PORT || 587;
+    if (!options.port && probe465.reachable && !probe587.reachable) {
+      primaryPort = 465;
+    }
+
+    const altPort = primaryPort === 465 ? 587 : 465;
+    let primaryResult = null;
+    let fallbackResult = null;
 
     try {
       const transporter = await createSmtpTransporter({ port: primaryPort, secure: primaryPort === 465 });
@@ -168,10 +225,16 @@ export const verifyEmailConfig = async () => {
         diagnostics: { ...diagnostics, activePort: primaryPort }
       };
     } catch (err) {
+      primaryResult = {
+        port: primaryPort,
+        error: err.message,
+        code: err.code || null,
+        command: err.command || null,
+        response: err.response || null
+      };
       console.error(`❌ [SMTP Verify Error on port ${primaryPort}]: ${err.message}`);
 
       // Attempt alternate port fallback
-      const altPort = primaryPort === 465 ? 587 : 465;
       try {
         console.log(`🔄 Attempting fallback verification via port ${altPort}...`);
         const fallbackTransporter = await createSmtpTransporter({ port: altPort, secure: altPort === 465 });
@@ -179,20 +242,24 @@ export const verifyEmailConfig = async () => {
         return {
           success: true,
           message: `Gmail SMTP verified successfully via fallback (port ${altPort}).`,
-          diagnostics: { ...diagnostics, activePort: altPort, fallbackUsed: true }
+          diagnostics: { ...diagnostics, activePort: altPort, fallbackUsed: true, primaryAttempt: primaryResult }
         };
       } catch (fallbackErr) {
+        fallbackResult = {
+          port: altPort,
+          error: fallbackErr.message,
+          code: fallbackErr.code || null,
+          command: fallbackErr.command || null,
+          response: fallbackErr.response || null
+        };
         console.error(`❌ [SMTP Fallback Verify Failed on port ${altPort}]: ${fallbackErr.message}`);
       }
 
       return {
         success: false,
-        message: `SMTP verification failed: ${err.message}`,
-        error: {
-          code: err.code || null,
-          command: err.command || null,
-          response: err.response || null
-        },
+        message: `SMTP verification failed on both ports (${primaryPort} & ${altPort}): ${err.message}`,
+        error: primaryResult,
+        fallbackError: fallbackResult,
         diagnostics
       };
     }

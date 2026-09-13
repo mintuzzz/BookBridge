@@ -4,6 +4,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import dns from 'dns';
+
+// Ensure IPv4 resolution is prioritized globally (critical for cloud hosts like Render without IPv6 routing)
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 import { fileURLToPath } from 'url';
 import initDb from './db/database.js';
 import { initSocket } from './socket.js';
