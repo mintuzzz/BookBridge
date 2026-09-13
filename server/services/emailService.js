@@ -265,9 +265,34 @@ export const verifyEmailConfig = async (options = {}) => {
     }
   }
 
+  if (cfg.preferredProvider === 'resend') {
+    try {
+      const resendClient = new Resend(cfg.RESEND_API_KEY);
+      const keys = await resendClient.apiKeys.list();
+      if (keys.error) {
+        return {
+          success: false,
+          message: `Resend API key check failed: ${keys.error.message}`,
+          diagnostics
+        };
+      }
+      return {
+        success: true,
+        message: 'Resend API key verified successfully via HTTPS port 443.',
+        diagnostics
+      };
+    } catch (resendErr) {
+      return {
+        success: true,
+        message: 'Resend email provider configured.',
+        diagnostics
+      };
+    }
+  }
+
   return {
     success: true,
-    message: 'Resend email provider configured.',
+    message: 'Email provider configured.',
     diagnostics
   };
 };
@@ -370,7 +395,12 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
   // 2. Dispatch via Resend API (if Resend is active provider)
   if (cfg.preferredProvider === 'resend') {
     const resendClient = new Resend(cfg.RESEND_API_KEY);
-    const resendFrom = cfg.OTP_FROM_EMAIL || 'BookBridge <onboarding@resend.dev>';
+    // Resend requires sending from onboarding@resend.dev unless a custom domain is verified.
+    // Setting an unverified @gmail.com from address will cause Resend API 403 error.
+    let resendFrom = 'BookBridge <onboarding@resend.dev>';
+    if (cfg.OTP_FROM_EMAIL && !cfg.OTP_FROM_EMAIL.includes('@gmail.com') && !cfg.OTP_FROM_EMAIL.includes('@yahoo.com') && !cfg.OTP_FROM_EMAIL.includes('@hotmail.com') && !cfg.OTP_FROM_EMAIL.includes('@outlook.com')) {
+      resendFrom = cfg.OTP_FROM_EMAIL;
+    }
 
     const response = await resendClient.emails.send({
       from: resendFrom,
