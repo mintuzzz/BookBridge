@@ -103,9 +103,9 @@ export const createSmtpTransporter = (options = {}) => {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 45000
   });
 };
 
