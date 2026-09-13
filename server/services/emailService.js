@@ -1,8 +1,14 @@
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import dns from 'dns';
 
 dotenv.config();
+
+// Ensure IPv4 resolution priority in cloud containers (Render/AWS) where outbound IPv6 is unreachable
+if (dns && typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 /**
  * Defensive configuration resolver.
@@ -85,6 +91,7 @@ export const createSmtpTransporter = (options = {}) => {
   if (isGmail && (usePort === 465 || options.service === 'gmail')) {
     return nodemailer.createTransport({
       service: 'gmail',
+      family: 4,
       auth: {
         user: cfg.SMTP_USER,
         pass: cfg.SMTP_PASS
@@ -100,6 +107,7 @@ export const createSmtpTransporter = (options = {}) => {
     host: cfg.SMTP_HOST || 'smtp.gmail.com',
     port: usePort,
     secure: isSecure,
+    family: 4,
     auth: {
       user: cfg.SMTP_USER,
       pass: cfg.SMTP_PASS
