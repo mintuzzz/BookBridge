@@ -94,6 +94,7 @@ export const createSmtpTransporter = (options = {}) => {
     port,
     secure,
     family: 4, // Force IPv4 to prevent ENETUNREACH in cloud containers
+    lookup: (hostname, opts, cb) => dns.lookup(hostname, { family: 4 }, cb),
     auth: {
       user: cfg.SMTP_USER,
       pass: cfg.SMTP_PASS
@@ -102,8 +103,8 @@ export const createSmtpTransporter = (options = {}) => {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
     socketTimeout: 20000
   });
 };
@@ -238,7 +239,10 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
 
   // 1. Dispatch via Production SMTP Server (Prioritized for Gmail)
   if (cfg.preferredProvider === 'smtp') {
-    const fromAddress = cfg.OTP_FROM_EMAIL || `BookBridge <${cfg.SMTP_USER}>`;
+    // For Gmail SMTP, the 'from' address must be the authenticated user address
+    const fromAddress = (cfg.isGmail && (!cfg.OTP_FROM_EMAIL || cfg.OTP_FROM_EMAIL.includes('resend.dev')))
+      ? `BookBridge <${cfg.SMTP_USER}>`
+      : (cfg.OTP_FROM_EMAIL || `BookBridge <${cfg.SMTP_USER}>`);
 
     const trySend = async (transportOptions) => {
       const transporter = createSmtpTransporter(transportOptions);
@@ -250,8 +254,8 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
       });
     };
 
-    // Primary attempt: use Port 465 (Direct SSL) for Gmail or configured port
-    const primaryPort = cfg.isGmail ? 465 : cfg.SMTP_PORT;
+    // Primary attempt: use configured SMTP_PORT (defaults to 587 or 465)
+    const primaryPort = cfg.SMTP_PORT || (cfg.isGmail ? 587 : 587);
     const primarySecure = primaryPort === 465;
 
     try {

@@ -144,7 +144,8 @@ router.post('/register', async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        message: 'Could not send verification email. Please check your email configuration or try again.'
+        message: 'Could not send verification email. Please check your email configuration or try again.',
+        details: emailErr.message || undefined
       });
     }
 
