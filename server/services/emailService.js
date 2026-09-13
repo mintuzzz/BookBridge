@@ -17,21 +17,25 @@ if (dns && typeof dns.setDefaultResultOrder === 'function') {
 export const getEmailConfig = () => {
   const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const SMTP_HOST = (process.env.SMTP_HOST || '').replace(/^["']|["']$/g, '').trim();
-  const portStr = (process.env.SMTP_PORT || '587').toString().replace(/^["']|["']$/g, '').trim();
-  const SMTP_PORT = parseInt(portStr, 10) || 587;
-  const SMTP_USER = (process.env.SMTP_USER || '').replace(/^["']|["']$/g, '').trim();
+  const portStr = (process.env.SMTP_PORT || '').toString().replace(/^["']|["']$/g, '').trim();
   const rawPass = (process.env.SMTP_PASS || '').replace(/^["']|["']$/g, '').trim();
-  // Strip all internal and trailing whitespace from Google App Passwords (e.g. 'abcd efgh ijkl mnop')
+  // Strip all internal and trailing whitespace from Google App Passwords
   const SMTP_PASS = rawPass.replace(/\s+/g, '');
+  const SMTP_USER = (process.env.SMTP_USER || '').replace(/^["']|["']$/g, '').trim();
   const OTP_FROM_EMAIL = (process.env.OTP_FROM_EMAIL || '').replace(/^["']|["']$/g, '').trim();
 
-  const isResendConfigured = Boolean(RESEND_API_KEY && !RESEND_API_KEY.includes('placeholder'));
   const isSmtpConfigured = Boolean(SMTP_USER && SMTP_PASS);
+  const isGmail =
+    (SMTP_HOST && SMTP_HOST.toLowerCase().includes('gmail')) ||
+    (SMTP_USER && SMTP_USER.toLowerCase().endsWith('@gmail.com'));
 
-  // Determine active provider:
-  // User explicitly uses Nodemailer with Gmail SMTP.
-  // If SMTP is configured, prioritize SMTP.
-  // If ONLY Resend is provided or explicitly requested via EMAIL_PROVIDER=resend, use Resend.
+  // Default to port 465 with SSL for Gmail (works reliably on Render/cloud hosts where 587 is throttled)
+  const defaultPort = isGmail ? 465 : 587;
+  const SMTP_PORT = portStr ? parseInt(portStr, 10) || defaultPort : defaultPort;
+
+  const isResendConfigured = Boolean(RESEND_API_KEY && !RESEND_API_KEY.includes('placeholder'));
+
+  // Provider selection: prioritize Gmail SMTP when SMTP credentials are present
   let preferredProvider = 'none';
   if (process.env.EMAIL_PROVIDER === 'resend' && isResendConfigured) {
     preferredProvider = 'resend';
@@ -43,11 +47,12 @@ export const getEmailConfig = () => {
 
   return {
     RESEND_API_KEY,
-    SMTP_HOST: SMTP_HOST || (isSmtpConfigured && SMTP_USER.toLowerCase().endsWith('@gmail.com') ? 'smtp.gmail.com' : SMTP_HOST),
+    SMTP_HOST: SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost'),
     SMTP_PORT,
     SMTP_USER,
     SMTP_PASS,
     OTP_FROM_EMAIL,
+    isGmail,
     isResendConfigured,
     isSmtpConfigured,
     preferredProvider
@@ -75,39 +80,20 @@ export const logEmailDiagnostics = () => {
 logEmailDiagnostics();
 
 /**
- * Creates a Nodemailer transporter with resilient connection timeouts
- * tailored for cloud hosting environments (Render / AWS / Linux containers).
+ * Creates a Nodemailer transporter with resilient connection timeouts and IPv4 forcing.
  */
 export const createSmtpTransporter = (options = {}) => {
   const cfg = getEmailConfig();
-  const isGmail =
-    (cfg.SMTP_HOST && cfg.SMTP_HOST.toLowerCase().includes('gmail')) ||
-    (cfg.SMTP_USER && cfg.SMTP_USER.toLowerCase().endsWith('@gmail.com'));
 
-  const usePort = options.port || cfg.SMTP_PORT;
-  const isSecure = options.secure !== undefined ? options.secure : (usePort === 465);
+  const host = options.host || cfg.SMTP_HOST || 'smtp.gmail.com';
+  const port = options.port || cfg.SMTP_PORT;
+  const secure = options.secure !== undefined ? options.secure : (port === 465);
 
-  // If using Gmail on port 465 or service override
-  if (isGmail && (usePort === 465 || options.service === 'gmail')) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      family: 4,
-      auth: {
-        user: cfg.SMTP_USER,
-        pass: cfg.SMTP_PASS
-      },
-      connectionTimeout: 20000,
-      greetingTimeout: 20000,
-      socketTimeout: 30000
-    });
-  }
-
-  // Standard host/port transporter with resilient timeouts
   return nodemailer.createTransport({
-    host: cfg.SMTP_HOST || 'smtp.gmail.com',
-    port: usePort,
-    secure: isSecure,
-    family: 4,
+    host,
+    port,
+    secure,
+    family: 4, // Force IPv4 to prevent ENETUNREACH in cloud containers
     auth: {
       user: cfg.SMTP_USER,
       pass: cfg.SMTP_PASS
@@ -116,9 +102,9 @@ export const createSmtpTransporter = (options = {}) => {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 20000,
-    greetingTimeout: 20000,
-    socketTimeout: 30000
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 20000
   });
 };
 
@@ -145,41 +131,40 @@ export const verifyEmailConfig = async () => {
   if (!cfg.isSmtpConfigured && !cfg.isResendConfigured) {
     return {
       success: false,
-      message: 'No email credentials configured. Please set SMTP_USER and SMTP_PASS (or RESEND_API_KEY) in Render environment variables.',
+      message: 'No email credentials configured. Please set SMTP_USER and SMTP_PASS in Render environment variables.',
       diagnostics
     };
   }
 
   if (cfg.preferredProvider === 'smtp') {
+    // Try primary port (465 SSL for Gmail, or configured port)
+    const primaryPort = cfg.isGmail ? 465 : cfg.SMTP_PORT;
+    const primarySecure = primaryPort === 465;
+
     try {
-      const transporter = createSmtpTransporter();
+      const transporter = createSmtpTransporter({ port: primaryPort, secure: primarySecure });
       await transporter.verify();
       return {
         success: true,
-        message: 'Gmail SMTP authentication verified successfully.',
-        diagnostics
+        message: `Gmail SMTP verified successfully on port ${primaryPort} (Direct SSL).`,
+        diagnostics: { ...diagnostics, activePort: primaryPort }
       };
     } catch (err) {
-      console.error('❌ [SMTP Verify Error]');
-      console.error(`   - Message: ${err.message}`);
-      console.error(`   - Code: ${err.code || 'N/A'}`);
-      console.error(`   - Command: ${err.command || 'N/A'}`);
-      console.error(`   - Response: ${err.response || 'N/A'}`);
+      console.error(`❌ [SMTP Verify Error on port ${primaryPort}]: ${err.message}`);
 
-      // Try automatic fallback to port 465 direct SSL if port 587 timed out
-      if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKET' || err.code === 'ECONNREFUSED') {
-        try {
-          console.log('🔄 Attempting fallback verification via direct SSL (port 465)...');
-          const fallbackTransporter = createSmtpTransporter({ service: 'gmail', port: 465, secure: true });
-          await fallbackTransporter.verify();
-          return {
-            success: true,
-            message: 'Gmail SMTP verified successfully via SSL fallback (port 465).',
-            diagnostics: { ...diagnostics, fallbackPortUsed: 465 }
-          };
-        } catch (fallbackErr) {
-          console.error(`❌ [SMTP Fallback Verify Failed] ${fallbackErr.message}`);
-        }
+      // Attempt alternate port fallback
+      const altPort = primaryPort === 465 ? 587 : 465;
+      try {
+        console.log(`🔄 Attempting fallback verification via port ${altPort}...`);
+        const fallbackTransporter = createSmtpTransporter({ port: altPort, secure: altPort === 465 });
+        await fallbackTransporter.verify();
+        return {
+          success: true,
+          message: `Gmail SMTP verified successfully via fallback (port ${altPort}).`,
+          diagnostics: { ...diagnostics, activePort: altPort, fallbackUsed: true }
+        };
+      } catch (fallbackErr) {
+        console.error(`❌ [SMTP Fallback Verify Failed on port ${altPort}]: ${fallbackErr.message}`);
       }
 
       return {
@@ -255,66 +240,40 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
   if (cfg.preferredProvider === 'smtp') {
     const fromAddress = cfg.OTP_FROM_EMAIL || `BookBridge <${cfg.SMTP_USER}>`;
 
-    try {
-      const transporter = createSmtpTransporter();
-      const info = await transporter.sendMail({
+    const trySend = async (transportOptions) => {
+      const transporter = createSmtpTransporter(transportOptions);
+      return await transporter.sendMail({
         from: fromAddress,
         to: toEmail,
         subject,
         html: htmlContent
       });
+    };
 
-      console.log(`✉️ [Production SMTP] Real OTP email sent successfully to ${toEmail} (MessageId: ${info.messageId})`);
+    // Primary attempt: use Port 465 (Direct SSL) for Gmail or configured port
+    const primaryPort = cfg.isGmail ? 465 : cfg.SMTP_PORT;
+    const primarySecure = primaryPort === 465;
+
+    try {
+      const info = await trySend({ port: primaryPort, secure: primarySecure });
+      console.log(`✉️ [Production SMTP] Real OTP email sent successfully to ${toEmail} via port ${primaryPort} (MessageId: ${info.messageId})`);
       return { success: true, provider: 'smtp', messageId: info.messageId };
     } catch (smtpErr) {
-      console.error('❌ [Production SMTP Send Error]');
+      console.error(`❌ [Production SMTP Send Error on port ${primaryPort}]`);
       console.error(`   - Message: ${smtpErr.message}`);
       console.error(`   - Code: ${smtpErr.code || 'N/A'}`);
       console.error(`   - Command: ${smtpErr.command || 'N/A'}`);
       console.error(`   - Response: ${smtpErr.response || 'N/A'}`);
 
-      // If connection timed out or reset on port 587, attempt fallback via port 465 (Direct SSL)
-      if (smtpErr.code === 'ETIMEDOUT' || smtpErr.code === 'ESOCKET' || smtpErr.code === 'ECONNREFUSED') {
-        try {
-          console.log('🔄 Attempting fallback send via direct SSL (port 465)...');
-          const fallbackTransporter = createSmtpTransporter({ service: 'gmail', port: 465, secure: true });
-          const fallbackInfo = await fallbackTransporter.sendMail({
-            from: fromAddress,
-            to: toEmail,
-            subject,
-            html: htmlContent
-          });
-
-          console.log(`✉️ [Production SMTP Fallback] OTP email sent successfully via port 465 (MessageId: ${fallbackInfo.messageId})`);
-          return { success: true, provider: 'smtp_fallback', messageId: fallbackInfo.messageId };
-        } catch (fallbackErr) {
-          console.error(`❌ [SMTP Fallback Send Failed] ${fallbackErr.message}`);
-        }
-      }
-
-      // If Resend is also configured, attempt secondary fallback
-      if (cfg.isResendConfigured) {
-        try {
-          console.log('🔄 Attempting secondary fallback via Resend API...');
-          const resendClient = new Resend(cfg.RESEND_API_KEY);
-          const resendFrom = cfg.OTP_FROM_EMAIL && !cfg.OTP_FROM_EMAIL.includes('@gmail.com')
-            ? cfg.OTP_FROM_EMAIL
-            : 'BookBridge <onboarding@resend.dev>';
-
-          const resendRes = await resendClient.emails.send({
-            from: resendFrom,
-            to: toEmail,
-            subject,
-            html: htmlContent
-          });
-
-          if (!resendRes.error) {
-            console.log(`✉️ [Resend Fallback] Real OTP sent via Resend (ID: ${resendRes.data?.id})`);
-            return { success: true, provider: 'resend_fallback', id: resendRes.data?.id };
-          }
-        } catch (resendFallbackErr) {
-          console.error(`❌ [Resend Secondary Fallback Failed] ${resendFallbackErr.message}`);
-        }
+      // Attempt alternate port (465 <-> 587)
+      const altPort = primaryPort === 465 ? 587 : 465;
+      try {
+        console.log(`🔄 Attempting fallback send via port ${altPort}...`);
+        const fallbackInfo = await trySend({ port: altPort, secure: altPort === 465 });
+        console.log(`✉️ [Production SMTP Fallback] OTP email sent successfully via port ${altPort} (MessageId: ${fallbackInfo.messageId})`);
+        return { success: true, provider: 'smtp_fallback', messageId: fallbackInfo.messageId };
+      } catch (fallbackErr) {
+        console.error(`❌ [SMTP Fallback Send Failed on port ${altPort}]: ${fallbackErr.message}`);
       }
 
       throw smtpErr;
@@ -335,20 +294,6 @@ export const sendOtpEmail = async ({ toEmail, studentName, otpCode, purpose = 'R
 
     if (response.error) {
       console.error(`❌ [Resend API Error] ${response.error.message}`);
-
-      // If Resend fails and SMTP credentials exist, fallback to SMTP
-      if (cfg.isSmtpConfigured) {
-        console.log('🔄 Resend failed; attempting fallback via Gmail SMTP...');
-        const transporter = createSmtpTransporter();
-        const info = await transporter.sendMail({
-          from: `BookBridge <${cfg.SMTP_USER}>`,
-          to: toEmail,
-          subject,
-          html: htmlContent
-        });
-        return { success: true, provider: 'smtp_fallback', messageId: info.messageId };
-      }
-
       throw new Error(`Resend API Error: ${response.error.message}`);
     }
 
