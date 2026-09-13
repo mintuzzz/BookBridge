@@ -8,8 +8,8 @@ dist/
 build/
 out/
 
-# User Uploaded Files
-uploads/
+# User Uploaded Files (Tracked so book cover images exist on Render)
+# uploads/
 
 # Environment Variables & Secrets
 .env

@@ -73,7 +73,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Serve Uploaded Book Images Statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Fallback proxy route for uploaded assets (e.g. books uploaded on Render or remote storage)
+// Fallback route for uploaded assets (proxies from production only when developing on localhost)
 app.get('/uploads/:folder/:filename', async (req, res) => {
   const { folder, filename } = req.params;
   const localDir = path.join(__dirname, '..', 'uploads', folder);
@@ -83,6 +83,13 @@ app.get('/uploads/:folder/:filename', async (req, res) => {
     return res.sendFile(localFile);
   }
 
+  // Prevent infinite loop if already running on Render
+  const host = (req.get('host') || '').toLowerCase();
+  if (host.includes('onrender.com') || process.env.RENDER) {
+    return res.status(404).send('Image not found');
+  }
+
+  // When running locally, proxy and cache remote image from production if available
   const remoteUrl = `https://bookbridge-api-394s.onrender.com/uploads/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
   try {
     const remoteRes = await fetch(remoteUrl);
@@ -102,7 +109,7 @@ app.get('/uploads/:folder/:filename', async (req, res) => {
       return res.send(buffer);
     }
   } catch (err) {
-    console.warn(`Could not proxy remote image ${remoteUrl}:`, err.message);
+    console.warn(`Could not proxy remote image:`, err.message);
   }
 
   return res.status(404).send('Image not found');

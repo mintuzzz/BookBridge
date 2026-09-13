@@ -8,9 +8,11 @@ import User from '../models/User.js';
 import UserProfile from '../models/UserProfile.js';
 import EcoPoint from '../models/EcoPoint.js';
 import Notification from '../models/Notification.js';
-import { isMongoConnected, getStore, saveStore } from '../db/database.js';
+import { isMongoConnected, checkIsMongoConnected, getStore, saveStore } from '../db/database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { triggerNotificationsForNewBook } from '../utils/notificationsHelper.js';
+
+const isDbConnected = () => checkIsMongoConnected() || isMongoConnected;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -101,7 +103,7 @@ const formatBookDoc = (b, profile = {}, user = {}) => {
 // Public Platform Statistics Endpoint
 router.get('/stats', async (req, res) => {
   try {
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       const soldBooks = await Book.countDocuments({ status: 'sold' });
       const exchangeCount = await Book.countDocuments({ status: 'exchanged' });
       const donateCount = await Book.countDocuments({ transactionType: 'donate' });
@@ -151,7 +153,7 @@ router.get('/', async (req, res) => {
   try {
     const { department, semester, transaction_type, search, status = 'available', max_price, sort } = req.query;
 
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       const query = {};
       if (status !== 'all') query.status = status;
       if (department && department !== 'All') query.department = department;
@@ -242,7 +244,7 @@ router.get('/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
 
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       let book = null;
       if (mongoose.Types.ObjectId.isValid(bookId)) {
         book = await Book.findByIdAndUpdate(
@@ -322,7 +324,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const finalImages = Array.isArray(images) && images.length > 0 ? images.slice(0, 3) : [];
 
     const createBook = async (data) => {
-      if (isMongoConnected) {
+      if (isDbConnected()) {
         return await Book.create(data);
       } else {
         const store = getStore();
@@ -358,7 +360,7 @@ router.post('/', authenticateToken, async (req, res) => {
     });
 
     // Reward Student with +20 Eco Points
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       try {
         await EcoPoint.create({
           user: req.user.id,
@@ -428,7 +430,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const bookId = req.params.id;
 
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       const book = await Book.findById(bookId);
       if (!book) return res.status(404).json({ error: 'Listing not found.' });
 
@@ -508,7 +510,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const bookId = req.params.id;
 
-    if (isMongoConnected) {
+    if (isDbConnected()) {
       const book = await Book.findById(bookId);
       if (!book) return res.status(404).json({ error: 'Listing not found.' });
 

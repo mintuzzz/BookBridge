@@ -9,13 +9,27 @@ import Notification from '../models/Notification.js';
 import Session from '../models/Session.js';
 import { isMongoConnected, checkIsMongoConnected, getStore, saveStore } from '../db/database.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
-import sendOtpEmail from '../services/emailService.js';
+import sendOtpEmail, { verifyEmailConfig } from '../services/emailService.js';
 
 const router = express.Router();
 
 const isDbMongo = () => {
   return checkIsMongoConnected() || isMongoConnected;
 };
+
+// Safe diagnostic endpoint to test email configuration in production without exposing secrets
+router.get('/email-diagnostics', async (req, res) => {
+  try {
+    const result = await verifyEmailConfig();
+    return res.status(result.success ? 200 : 500).json(result);
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to run email diagnostics',
+      error: err.message
+    });
+  }
+});
 
 // 1. Register Student Step 1: Submit info, generate & email 6-digit OTP
 router.post('/register', async (req, res) => {
@@ -124,6 +138,10 @@ router.post('/register', async (req, res) => {
       console.log(`✉️ Real OTP email dispatched successfully to: ${cleanEmail}`);
     } catch (emailErr) {
       console.error(`❌ Failed to send OTP email: ${emailErr.message}`);
+      if (emailErr.code) console.error(`   - Error Code: ${emailErr.code}`);
+      if (emailErr.command) console.error(`   - SMTP Command: ${emailErr.command}`);
+      if (emailErr.response) console.error(`   - SMTP Response: ${emailErr.response}`);
+
       return res.status(500).json({
         success: false,
         message: 'Could not send verification email. Please check your email configuration or try again.'
@@ -517,6 +535,10 @@ router.post('/resend-otp', async (req, res) => {
       console.log(`✉️ Real OTP email resent successfully to: ${cleanEmail}`);
     } catch (emailErr) {
       console.error(`❌ Failed to resend verification email: ${emailErr.message}`);
+      if (emailErr.code) console.error(`   - Error Code: ${emailErr.code}`);
+      if (emailErr.command) console.error(`   - SMTP Command: ${emailErr.command}`);
+      if (emailErr.response) console.error(`   - SMTP Response: ${emailErr.response}`);
+
       return res.status(500).json({
         success: false,
         message: 'Could not resend verification email. Please try again later.'
@@ -609,6 +631,9 @@ router.post('/forgot-password', async (req, res) => {
       console.log(`✉️ Password reset verification email dispatched to: ${cleanEmail}`);
     } catch (emailErr) {
       console.error(`❌ Failed to send password reset email: ${emailErr.message}`);
+      if (emailErr.code) console.error(`   - Error Code: ${emailErr.code}`);
+      if (emailErr.command) console.error(`   - SMTP Command: ${emailErr.command}`);
+      if (emailErr.response) console.error(`   - SMTP Response: ${emailErr.response}`);
     }
 
     return res.json({

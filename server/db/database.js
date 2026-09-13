@@ -13,8 +13,26 @@ const mongoStorePath = path.join(__dirname, 'mongodb_store.json');
 export let isMongoConnected = false;
 
 export const checkIsMongoConnected = () => {
-  return mongoose.connection && mongoose.connection.readyState === 1;
+  const connected = mongoose.connection && mongoose.connection.readyState === 1;
+  if (connected) isMongoConnected = true;
+  return connected;
 };
+
+// Listen to connection lifecycle events to keep state synchronized
+mongoose.connection.on('connected', () => {
+  isMongoConnected = true;
+  console.log('🍃 Mongoose connection established to MongoDB Atlas.');
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ Mongoose disconnected from MongoDB.');
+  isMongoConnected = false;
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ Mongoose connection error:', err.message);
+  isMongoConnected = false;
+});
 
 export const initDb = async () => {
   if (checkIsMongoConnected()) {
@@ -27,8 +45,12 @@ export const initDb = async () => {
   try {
     mongoose.set('strictQuery', false);
     mongoose.set('bufferCommands', false);
-    console.log(`🍃 Connecting to MongoDB at: ${uri}`);
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 2000, connectTimeoutMS: 2000 });
+    console.log(`🍃 Connecting to MongoDB...`);
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000,
+      socketTimeoutMS: 45000
+    });
     isMongoConnected = true;
     console.log(`✅ Connected to MongoDB Database server cleanly.`);
     return true;
